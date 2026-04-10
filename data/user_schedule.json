@@ -1,0 +1,52 @@
+{
+  "default": {
+    "weekday": [
+      {"type": "leave_home", "at": "08:30"},
+      {"type": "return_home", "at": "18:00"}
+    ],
+    "weekend": [
+      {"type": "leave_home", "at": "10:00"},
+      {"type": "return_home", "at": "16:00"}
+    ]
+  },
+  "user1": {
+    "weekday": [
+      {"type": "leave_home", "at": "09:00"},
+      {"type": "return_home", "at": "17:30"}
+    ],
+    "weekend": [
+      {"type": "leave_home", "at": "11:00"},
+      {"type": "return_home", "at": "15:00"}
+    ]
+  },
+  "user_alex": {
+    "weekday": [
+      {"type": "leave_home", "at": "07:00"},
+      {"type": "return_home", "at": "17:00"}
+    ],
+    "weekend": [
+      {"type": "leave_home", "at": "08:00"},
+      {"type": "return_home", "at": "12:00"}
+    ]
+  },
+  "user_bob": {
+    "weekday": [
+      {"type": "leave_home", "at": "12:00", "note": "lunch run"},
+      {"type": "return_home", "at": "13:00"}
+    ],
+    "weekend": [
+      {"type": "leave_home", "at": "10:00"},
+      {"type": "return_home", "at": "18:00"}
+    ]
+  },
+  "user_carol": {
+    "weekday": [
+      {"type": "leave_home", "at": "14:00"},
+      {"type": "return_home", "at": "23:00"}
+    ],
+    "weekend": [
+      {"type": "leave_home", "at": "16:00"},
+      {"type": "return_home", "at": "01:00"}
+    ]
+  }
+}

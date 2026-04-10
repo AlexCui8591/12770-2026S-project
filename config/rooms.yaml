@@ -1,0 +1,20 @@
+rooms:
+  - room_id: bedroom
+    entity_id: climate.bedroom_ac
+    display_name: 卧室空调
+    sensor_entity_id: sensor.bedroom_temperature
+
+  - room_id: living_room
+    entity_id: climate.living_room_ac
+    display_name: 客厅空调
+    sensor_entity_id: sensor.living_room_temperature
+
+  - room_id: study
+    entity_id: climate.study_ac
+    display_name: 书房空调
+    sensor_entity_id: sensor.study_temperature
+
+  - room_id: kitchen
+    entity_id: climate.kitchen_ac
+    display_name: 厨房空调
+    sensor_entity_id: sensor.kitchen_temperature

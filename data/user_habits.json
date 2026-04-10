@@ -1,0 +1,92 @@
+{
+  "default": {
+    "morning": {
+      "preferred_temp": 25.0,
+      "fan_preference": "medium",
+      "wake_time": "07:30"
+    },
+    "afternoon": {
+      "preferred_temp": 25.0,
+      "fan_preference": "medium"
+    },
+    "night": {
+      "preferred_sleep_temp": 23.0,
+      "preferred_temp": 23.0,
+      "bedtime": "23:00",
+      "wake_time": "07:30",
+      "fan_preference": "low"
+    }
+  },
+  "user1": {
+    "morning": {
+      "preferred_temp": 24.5,
+      "fan_preference": "low",
+      "wake_time": "07:00"
+    },
+    "afternoon": {
+      "preferred_temp": 25.5,
+      "fan_preference": "medium"
+    },
+    "night": {
+      "preferred_sleep_temp": 22.5,
+      "preferred_temp": 22.5,
+      "bedtime": "22:30",
+      "wake_time": "07:00",
+      "fan_preference": "low"
+    }
+  },
+  "user_alex": {
+    "morning": {
+      "preferred_temp": 23.0,
+      "fan_preference": "high",
+      "wake_time": "06:30"
+    },
+    "afternoon": {
+      "preferred_temp": 23.5,
+      "fan_preference": "high"
+    },
+    "night": {
+      "preferred_sleep_temp": 21.0,
+      "preferred_temp": 21.5,
+      "bedtime": "22:00",
+      "wake_time": "06:30",
+      "fan_preference": "medium"
+    }
+  },
+  "user_bob": {
+    "morning": {
+      "preferred_temp": 26.0,
+      "fan_preference": "low",
+      "wake_time": "08:30"
+    },
+    "afternoon": {
+      "preferred_temp": 26.5,
+      "fan_preference": "low"
+    },
+    "night": {
+      "preferred_sleep_temp": 25.0,
+      "preferred_temp": 25.0,
+      "bedtime": "00:00",
+      "wake_time": "08:30",
+      "fan_preference": "low"
+    }
+  },
+  "user_carol": {
+    "morning": {
+      "preferred_temp": 25.5,
+      "fan_preference": "auto",
+      "wake_time": "10:00"
+    },
+    "afternoon": {
+      "preferred_temp": 26.0,
+      "fan_preference": "auto"
+    },
+    "night": {
+      "preferred_sleep_temp": 24.0,
+      "preferred_temp": 24.0,
+      "bedtime": "01:00",
+      "wake_time": "10:00",
+      "fan_preference": "auto"
+    }
+  }
+}

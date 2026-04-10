@@ -1,0 +1,8 @@
+ha_url: "http://homeassistant.local:8123"
+ha_token: ""        # 留空时使用环境变量 HA_TOKEN
+
+temp_min: 20.0
+temp_max: 28.0
+anti_cycle_seconds: 180
+api_cooldown_seconds: 10
+sensor_timeout_seconds: 5

@@ -1,0 +1,12 @@
+# 峰谷电价规则
+# 按小时区间定义电价等级和单价
+
+peak:
+  hours: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+  price_per_kwh: 0.85
+  tier: "peak"
+
+off_peak:
+  hours: [0, 1, 2, 3, 4, 5, 6, 7, 22, 23]
+  price_per_kwh: 0.35
+  tier: "off_peak"
