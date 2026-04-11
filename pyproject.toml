@@ -1,0 +1,20 @@
+[project]
+name = "12770-2026s-proejct"
+version = "0.1.0"
+description = "LLM-in-the-loop HVAC control system with agent-based closed-loop supervision and 2R2C thermal simulation"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "requests",
+    "pydantic",
+    "python-dotenv",
+    "jupyter",
+    "ipykernel",
+    "ollama",
+    "sqlalchemy",
+    "pytest",
+]
