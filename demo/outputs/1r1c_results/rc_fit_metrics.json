@@ -1,0 +1,13 @@
+{
+  "model": "1R1C",
+  "input_file": "data\\test_box_insulated_cleaned.xlsx",
+  "sheet_name": "insulated_concrete",
+  "num_samples": 1411,
+  "metrics": {
+    "MAE": 0.6421047040611334,
+    "RMSE": 0.8488939958581716,
+    "R2": 0.986628229274392
+  },
+  "parameter_file": "config\\rc_fit_results.json",
+  "plot_file": "outputs\\1r1c_results\\rc_fit_plot.png"
+}

@@ -1,0 +1,64 @@
+{
+  "method": "C0 baseline with tuned fixed PID",
+  "day1_role": "PID tuning only",
+  "day2_role": "formal C0 baseline run",
+  "initial_condition_rule": "initial indoor temperature equals initial outdoor temperature",
+  "pid_tuning_method": "grid search + normalized discrete cost",
+  "fixed_pid_after_tuning": {
+    "KP": 1.0,
+    "KI": 3.0,
+    "KD": 0.0
+  },
+  "power_limit_W": 14.25,
+  "deadband_C": 0.2,
+  "warmup_ignored_for_cost_hours": 1.0,
+  "warmup_ignored_for_MO_hours": 1.0,
+  "setpoint_schedule": {
+    "09:00-18:00": 38.0,
+    "other_hours": 40.0
+  },
+  "cost_weights_on_normalized_terms": {
+    "W_COMFORT": 5.0,
+    "W_ENERGY": 1.0,
+    "W_RESPONSE": 10.0
+  },
+  "normalization_scales": {
+    "comfort": 107600.44279420686,
+    "energy": 641658.9619347261,
+    "response": 11.710708984415364
+  },
+  "tariff_schedule_for_EC": {
+    "offpeak_USD_per_kWh": 0.12,
+    "onpeak_USD_per_kWh": 0.2,
+    "onpeak_hours": [
+      16,
+      17,
+      18,
+      19,
+      20
+    ]
+  },
+  "plant_parameters": {
+    "R_hat_K_per_W": 2.1745178450499036,
+    "C_hat_J_per_K": 1429.5134786202493
+  },
+  "best_day1_cost": {
+    "J_total": 1.8118883166965745,
+    "J_comfort_raw": 10547.134817416307,
+    "J_energy_raw": 666070.4114044794,
+    "J_response_raw": 0.33227680420163197,
+    "J_comfort_norm": 0.09802129567058025,
+    "J_energy_norm": 1.0380442741673055,
+    "J_response_norm": 0.028373756417636765
+  },
+  "day2_evaluation_metrics": {
+    "MAD_C": 0.2225918604083098,
+    "CVR_fraction": 0.013043478260869565,
+    "CE_kWh": 0.1878579956930402,
+    "EC_USD": 0.025330115939346785,
+    "RT_s": 2820.0,
+    "ST_s": 6960.0,
+    "OC_count": 2,
+    "MO_C": 2.2050999138774827
+  }
+}
