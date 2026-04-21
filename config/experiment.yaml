@@ -1,0 +1,106 @@
+# Experiment Configuration
+# ========================
+# Each condition isolates a specific architectural component.
+# Use: python -m agent.mock_runner --scenario all --mode <mode>
+
+# ── C0: Fixed PID Baseline ──
+# No LLM involvement at all. PID runs with static parameters.
+# Implementation: don't call supervisor_step(), just run PID.
+c0:
+  name: "Fixed PID Baseline"
+  llm_enabled: false
+  pid_params:
+    kp: 2.0
+    ki: 0.05
+    kd: 0.8
+  cost_weights:
+    energy: 0.33
+    comfort: 0.34
+    response: 0.33
+
+# ── C1: LLM Setpoint-Only ──
+# LLM parses user command once → outputs setpoint + cost_weights.
+# Then PID runs with SAME static gains as C0.
+# No supervision loop.
+c1:
+  name: "LLM Setpoint-Only"
+  llm_enabled: true
+  supervision_enabled: false
+  pid_params:
+    kp: 2.0    # same as C0
+    ki: 0.05
+    kd: 0.8
+
+# ── C2: LLM-in-the-Loop (Reactive) ──
+# LLM runs supervision loop every 5 min.
+# No access to forecast or schedule tools.
+c2:
+  name: "LLM-in-the-Loop (Reactive)"
+  llm_enabled: true
+  supervision_enabled: true
+  mode: "reactive"
+  supervision_interval_steps: 5
+  model: "qwen2.5:7b"
+  temperature: 0.3
+
+# ── C3: LLM-in-the-Loop (Proactive) ──
+# Same as C2 but with access to forecast + schedule tools.
+c3:
+  name: "LLM-in-the-Loop (Proactive)"
+  llm_enabled: true
+  supervision_enabled: true
+  mode: "proactive"
+  supervision_interval_steps: 5
+  model: "qwen2.5:7b"
+  temperature: 0.3
+
+# ── Experiment Parameters ──
+experiment:
+  runs_per_condition: 5
+  seeds: [42, 123, 456, 789, 1024]
+  scenarios:
+    - id: S1
+      name: "Steady-State Tracking"
+      command: "Set the bedroom to 22°C."
+      duration_steps: 120   # 2 hours
+    - id: S2
+      name: "Weather Disturbance"
+      command: "Keep the room comfortable."
+      duration_steps: 180   # 3 hours
+      disturbance: "10°C outdoor drop at step 30"
+    - id: S3
+      name: "Cost Optimization"
+      command: "Keep it warm but minimize electricity costs."
+      duration_steps: 720   # 12 hours
+      disturbance: "3x peak tariff mid-period"
+    - id: S4
+      name: "Occupancy Adaptation"
+      command: "Guests coming at 6 PM, make it comfortable."
+      duration_steps: 360   # 6 hours
+    - id: S5
+      name: "Multi-Disturbance Stress"
+      command: "Balance comfort and cost for 24 hours."
+      duration_steps: 1440  # 24 hours
+    - id: S6
+      name: "LLM Failure Resilience"
+      command: "Keep the room at 21°C."
+      duration_steps: 240   # 4 hours
+      failure_injection: true
+      failure_rate: 0.20
+
+# ── Thermal Model Parameters ──
+thermal_model:
+  residential:
+    C_air: 250      # kJ/°C
+    C_wall: 1500    # kJ/°C
+    R_wall: 0.004   # °C/W
+    R_conv: 0.002   # °C/W
+    Q_max: 3000     # W
+    room_volume: 45  # m³
+  commercial:
+    C_air: 800
+    C_wall: 5000
+    R_wall: 0.004
+    R_conv: 0.002
+    Q_max: 10000
+    room_volume: 150
