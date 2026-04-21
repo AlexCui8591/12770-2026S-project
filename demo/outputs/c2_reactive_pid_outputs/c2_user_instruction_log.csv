@@ -1,0 +1,6 @@
+time,user_utterance,machine_command
+2026-04-02 02:00:00,"It's too warm now, lower it to 38 degrees.","{""action"": ""set_setpoint"", ""effective_start"": ""2026-04-02 02:00:00"", ""effective_end"": ""2026-04-02 03:00:00"", ""setpoint_C"": 38.0, ""reason"": ""temporary night adjustment""}"
+2026-04-02 03:00:00,No new instruction received. Revert to default night setting.,"{""action"": ""set_setpoint"", ""effective_start"": ""2026-04-02 03:00:00"", ""effective_end"": ""2026-04-02 09:00:00"", ""setpoint_C"": 39.0, ""reason"": ""return to default because no follow-up instruction""}"
+2026-04-02 18:00:00,Turn it up to 41 degrees for now.,"{""action"": ""set_setpoint"", ""effective_start"": ""2026-04-02 18:00:00"", ""effective_end"": ""2026-04-02 19:00:00"", ""setpoint_C"": 41.0, ""reason"": ""temporary evening request""}"
+2026-04-02 19:00:00,No new instruction received. Revert to regular evening target.,"{""action"": ""set_setpoint"", ""effective_start"": ""2026-04-02 19:00:00"", ""effective_end"": ""2026-04-02 22:00:00"", ""setpoint_C"": 40.0, ""reason"": ""return to default because no follow-up instruction""}"
+2026-04-02 22:00:00,"I'm going to sleep, set it to 39 degrees.","{""action"": ""set_setpoint"", ""effective_start"": ""2026-04-02 22:00:00"", ""effective_end"": ""2026-04-03 02:00:00"", ""setpoint_C"": 39.0, ""reason"": ""sleep preference""}"

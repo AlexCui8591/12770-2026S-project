@@ -1,0 +1,49 @@
+{
+  "method": "C3 proactive PID supervision with fixed setpoint schedule",
+  "condition_definition": "setpoint is fixed by the shared C1/C2 schedule; only PID parameters are adjusted every 5 minutes using forecasted outdoor temperature and user habits",
+  "initial_pid_source": "loaded from outputs/c0_tuned_pid_outputs/c0_run_summary.json",
+  "initial_pid_used": {
+    "KP": 1.0,
+    "KI": 3.0,
+    "KD": 0.0
+  },
+  "supervision_interval_min": 5,
+  "window_min": 5,
+  "forecast_horizon_min": 60,
+  "significant_forecast_delta_C": 0.5,
+  "weather_source": "generated outdoor temperature data",
+  "setpoint_adjustment_online": false,
+  "cost_weight_adjustment_online": false,
+  "pid_bounds": {
+    "KP_MIN": 0.05,
+    "KP_MAX": 15.0,
+    "KI_MIN": 0.0,
+    "KI_MAX": 5.0,
+    "KD_MIN": 0.0,
+    "KD_MAX": 3.0
+  },
+  "setpoint_schedule": {
+    "00:00-02:00": 39.0,
+    "02:00-03:00": 38.0,
+    "03:00-09:00": 39.0,
+    "09:00-18:00": 38.0,
+    "18:00-19:00": 41.0,
+    "19:00-22:00": 40.0,
+    "22:00-24:00": 39.0
+  },
+  "instruction_log_file": "outputs\\c3_proactive_pid_outputs\\c3_user_instruction_log.csv",
+  "supervision_log_file": "outputs\\c3_proactive_pid_outputs\\c3_supervision_log.csv",
+  "num_supervision_updates": 287,
+  "num_proactive_updates": 157,
+  "num_reactive_updates": 59,
+  "day2_evaluation_metrics": {
+    "MAD_C": 3.3840254523321587,
+    "CVR_fraction": 0.43043478260869567,
+    "CE_kWh": 0.18233720570906548,
+    "EC_USD": 0.026048677036644364,
+    "RT_s": 2640.0,
+    "ST_s": null,
+    "OC_count": null,
+    "MO_C": 14.014950857233437
+  }
+}
