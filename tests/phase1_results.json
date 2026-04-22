@@ -11,19 +11,19 @@
       "hvac_mode": "cool",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.34,
-        "response": 0.33
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested 22°C, which is slightly lower than current temperature (23°C). Target < current → cool mode. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User requested 22°C, which is slightly below current 23°C. Target < current → cool mode. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 7995.461225509644,
+    "latency_ms": 24944.62490081787,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -42,22 +42,22 @@
       "target_temperature": 23.0,
       "hvac_mode": "off",
       "cost_weights": {
-        "energy": 0.3,
-        "comfort": 0.3,
-        "response": 0.4
+        "energy": 0.33,
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 1.0,
       "valid_until": null,
-      "reason": "User requested to turn off heating. No specific temperature or comfort preference given."
+      "reason": "User requested to turn off heating. Current temperature is close to target, so mode set to 'off'."
     },
     "validator_fixes": [],
-    "latency_ms": 6876.386880874634,
+    "latency_ms": 7229.318141937256,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
-    "weight_match": false,
+    "weight_match": true,
     "weight_pattern": "balanced",
     "cost_weights_defaulted": false
   },
@@ -72,18 +72,18 @@
       "target_temperature": 23.0,
       "hvac_mode": "cool",
       "cost_weights": {
-        "energy": 0.33,
-        "comfort": 0.34,
-        "response": 0.33
+        "energy": 0.3,
+        "comfort": 0.5,
+        "response": 0.2
       },
       "preset_mode": "none",
       "fan_mode": "high",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested cooling and high fan speed. Target near current temperature to avoid aggressive change, as it is occupied."
+      "reason": "User requested cooling mode with high fan speed. target ≈ current → auto mode."
     },
     "validator_fixes": [],
-    "latency_ms": 7791.331052780151,
+    "latency_ms": 6775.254964828491,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -110,12 +110,12 @@
       "fan_mode": "low",
       "deadband": 1.0,
       "valid_until": null,
-      "reason": "Energy prioritized ('minimize costs'). Lower target + eco preset + wide deadband reduce cycling. target > current → heat mode. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User wants to minimize energy costs while keeping it warm. Target temperature is set slightly above current for comfort within the cost constraint. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 7556.160688400269,
+    "latency_ms": 6506.5672397613525,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -140,14 +140,14 @@
       },
       "preset_mode": "none",
       "fan_mode": "high",
-      "deadband": 1.0,
+      "deadband": 0.5,
       "valid_until": null,
-      "reason": "User wants quick cooling but energy efficiency. Target is below current, so cool mode. Higher response weight for 'quickly', lower comfort and energy to balance. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User wants quick cooling but not excessive energy use. Target below current to cool fast; balanced cost_weights reflect user's request. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 7780.7581424713135,
+    "latency_ms": 6532.351016998291,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -173,11 +173,11 @@
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 0.5,
-      "valid_until": "2026-04-22T18:00:00+00:00",
-      "reason": "Guests arriving at 6 PM (18:00) → target near current + comfort priority. auto mode allows gradual adjustment."
+      "valid_until": "2026-04-22T18:00:00",
+      "reason": "Guests arriving at 6 PM, target temperature set to 23.5°C for comfort. No explicit energy or response preference given, so balanced weights. Target close to current temp, mode = auto."
     },
     "validator_fixes": [],
-    "latency_ms": 8483.2181930542,
+    "latency_ms": 9763.987064361572,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": false,
@@ -196,22 +196,22 @@
       "target_temperature": 23.0,
       "hvac_mode": "auto",
       "cost_weights": {
-        "energy": 0.35,
-        "comfort": 0.35,
-        "response": 0.3
+        "energy": 0.33,
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "none",
       "fan_mode": "auto",
-      "deadband": 1.0,
+      "deadband": 0.5,
       "valid_until": null,
-      "reason": "Balanced comfort and cost with no strong preference signals."
+      "reason": "Balanced comfort and cost priority with user's request. No strong signals for specific mode or fan speed."
     },
     "validator_fixes": [],
-    "latency_ms": 6136.770963668823,
+    "latency_ms": 6637.6941204071045,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
-    "weight_match": true,
+    "weight_match": false,
     "weight_pattern": "top_tie",
     "cost_weights_defaulted": false
   },
@@ -227,19 +227,19 @@
       "hvac_mode": "auto",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.34,
-        "response": 0.33
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "sleep",
       "fan_mode": "low",
       "deadband": 0.8,
       "valid_until": null,
-      "reason": "User is going to bed; prefer sleep preset and lower fan speed for quiet operation. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User is going to bed; prefer sleep preset for quiet operation and stability. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 6075.941801071167,
+    "latency_ms": 5965.429782867432,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -255,26 +255,24 @@
     "error_type": "none",
     "output": {
       "room": "living_room",
-      "target_temperature": 23.0,
-      "hvac_mode": "auto",
+      "target_temperature": 21.5,
+      "hvac_mode": "heat",
       "cost_weights": {
         "energy": 0.33,
         "comfort": 0.33,
         "response": 0.34
       },
-      "preset_mode": "none",
+      "preset_mode": "eco",
       "fan_mode": "low",
-      "deadband": 1.0,
+      "deadband": 1.5,
       "valid_until": "2026-04-22T18:00:00+00:00",
-      "reason": "User is not home until 6 PM, so eco mode with wider deadband is preferred to save energy. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User not home until 6 PM; set lower target to save energy during absence."
     },
-    "validator_fixes": [
-      "room was missing"
-    ],
-    "latency_ms": 8736.225843429565,
+    "validator_fixes": [],
+    "latency_ms": 7824.8131275177,
     "target_temp_close": false,
-    "hvac_mode_match": true,
-    "preset_match": false,
+    "hvac_mode_match": false,
+    "preset_match": true,
     "weight_match": false,
     "weight_pattern": "clear",
     "cost_weights_defaulted": false
@@ -301,7 +299,7 @@
       "reason": "Sunny day may increase solar heat gain; slightly raise target temperature for comfort."
     },
     "validator_fixes": [],
-    "latency_ms": 6605.039119720459,
+    "latency_ms": 6348.513126373291,
     "target_temp_close": true,
     "hvac_mode_match": false,
     "preset_match": true,
@@ -321,23 +319,23 @@
       "hvac_mode": "cool",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.34,
-        "response": 0.33
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested a bit cooler, target adjusted by 1°C from current temperature. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User requested a bit cooler (23°C vs current 24°C). Target within the comfort range, balanced cost_weights as no preference signal. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 7109.256982803345,
+    "latency_ms": 6737.874984741211,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
-    "weight_match": true,
+    "weight_match": false,
     "weight_pattern": "clear",
     "cost_weights_defaulted": false
   },
@@ -365,7 +363,7 @@
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 7744.048118591309,
+    "latency_ms": 7387.449026107788,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -385,19 +383,19 @@
       "hvac_mode": "auto",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.34,
-        "response": 0.33
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "sleep",
       "fan_mode": "low",
       "deadband": 0.8,
       "valid_until": null,
-      "reason": "User wants a comfortable sleeping environment. Target temperature set to the comfort zone (21.5°C) and sleep preset mode chosen for quiet operation. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User wants a comfortable sleeping environment. Target temperature near the comfort zone (21-23°C). Low response weight for quiet operation during sleep. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 7056.844711303711,
+    "latency_ms": 6818.033933639526,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -416,20 +414,20 @@
       "target_temperature": 30.0,
       "hvac_mode": "heat",
       "cost_weights": {
-        "energy": 0.33,
-        "comfort": 0.33,
-        "response": 0.34
+        "energy": 0.33333333333333337,
+        "comfort": 0.33333333333333337,
+        "response": 0.33333333333333337
       },
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested an impossible temperature (40°C), clamped to maximum safe value (30°C). target > current → heat mode. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User requested an impossible temperature (40°C). Clamped to maximum safe value of 30°C. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 6907.902956008911,
+    "latency_ms": 6356.162071228027,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": false,
@@ -456,12 +454,12 @@
       "fan_mode": "auto",
       "deadband": 1.0,
       "valid_until": null,
-      "reason": "User request is contradictory ('cooler and warmer at the same time'). Picking a neutral config near current temperature, mode = auto. (Validation adjusted: room was missing, so the context room was used)"
+      "reason": "User request is contradictory (cooler and warmer at the same time). Picking a neutral config near current temperature, mode = auto. Equal cost_weights. (Validation adjusted: room was missing, so the context room was used)"
     },
     "validator_fixes": [
       "room was missing"
     ],
-    "latency_ms": 7158.169984817505,
+    "latency_ms": 7142.133951187134,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,

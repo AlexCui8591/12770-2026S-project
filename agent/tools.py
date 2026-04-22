@@ -70,7 +70,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_weather",
-            "description": "Get outdoor weather for a city, including temperature, humidity, condition, and wind speed.",
+            "description": "Get the CURRENT outdoor weather for a city: temperature, humidity, condition, wind speed. Use this only for the present moment; for future hours use get_weather_forecast.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -126,7 +126,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_energy_price",
-            "description": "Get electricity pricing information for a given time, including tier and next off-peak time.",
+            "description": "Get the CURRENT electricity pricing tier for a given time, including tier and next off-peak time. For a forward-looking price window use get_tariff_schedule.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -186,6 +186,49 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "timezone": {
                         "type": "string",
                         "description": "Timezone for the input time. Defaults to America/New_York.",
+                    },
+                },
+                "required": ["time"],
+            },
+        },
+    },
+    # -- Phase 2: forecast tools (C3 proactive-mode enablers) --
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather_forecast",
+            "description": "Get the OUTDOOR WEATHER FORECAST for the next hours_ahead hours (up to 72h, returned at 3-hour granularity). Use this when deciding whether to pre-heat or pre-cool ahead of a forecasted temperature swing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "string",
+                        "description": "City name, for example Pittsburgh.",
+                    },
+                    "hours_ahead": {
+                        "type": "integer",
+                        "description": "How many hours of forecast to return (1-72). Default 24.",
+                    },
+                },
+                "required": ["city"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_tariff_schedule",
+            "description": "Get the ELECTRICITY TARIFF SCHEDULE for the next hours_ahead hours. Returns hourly (tier, price_per_kwh) plus the timestamp of the next off_peak window. Use this when deciding whether to shift load to cheaper hours.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "time": {
+                        "type": "string",
+                        "description": "Starting time in ISO 8601 format, for example 2026-03-29T22:30:00.",
+                    },
+                    "hours_ahead": {
+                        "type": "integer",
+                        "description": "How many hours ahead to retrieve (1-48). Default 24.",
                     },
                 },
                 "required": ["time"],
@@ -545,13 +588,146 @@ def get_solar_radiation(
     return result
 
 
+# =============================================================================
+# Phase 2: forecast tools (C3 proactive-mode enablers).
+# Added by the LLM stream; do not modify the functions above.
+# =============================================================================
+
+
+def get_weather_forecast(city: str, hours_ahead: int = 24) -> dict:
+    """Query wttr.in for hourly outdoor weather forecast.
+
+    wttr.in's ?format=j1 response contains a `weather` array of up to 3 days,
+    each with an `hourly` sub-array at 3-hour granularity. We flatten it to
+    a list of forecast points truncated to roughly hours_ahead hours.
+    """
+    logger.info("Tool call: get_weather_forecast(city=%s, hours_ahead=%d)", city, int(hours_ahead))
+
+    hours_ahead = max(1, min(72, int(hours_ahead)))  # wttr.in's 3-day window
+
+    response = requests.get(
+        f"https://wttr.in/{city}?format=j1",
+        timeout=TOOL_TIMEOUT_SECONDS,
+        headers={"Accept": "application/json"},
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    forecast_points: list[dict] = []
+    for day in data.get("weather", []):
+        date = day.get("date")
+        for hourly in day.get("hourly", []):
+            # wttr.in encodes "time" as unpadded HHMM strings: "0", "300", "600", ..., "2100"
+            time_str = str(hourly.get("time", "0")).zfill(4)
+            try:
+                hh = int(time_str[:2])
+            except ValueError:
+                continue
+            forecast_points.append({
+                "timestamp": f"{date}T{hh:02d}:00:00",
+                "outdoor_temp": float(hourly.get("tempC", 0)),
+                "humidity": int(hourly.get("humidity", 0)),
+                "condition": hourly.get("weatherDesc", [{}])[0].get("value", "unknown"),
+                "wind_speed_kmh": int(hourly.get("windspeedKmph", 0)),
+                "chance_of_rain": int(hourly.get("chanceofrain", 0)),
+            })
+
+    # ceil(hours_ahead / 3) since data is 3-hour spaced
+    max_points = max(1, (hours_ahead + 2) // 3)
+    forecast_points = forecast_points[:max_points]
+
+    return {
+        "city": city,
+        "hours_ahead": hours_ahead,
+        "granularity_hours": 3,
+        "points": forecast_points,
+    }
+
+
+def get_tariff_schedule(time: str, hours_ahead: int = 24) -> dict:
+    """Return the electricity tariff schedule for a forward window.
+
+    The `energy_price` table has one row per hour-of-day (0-23). We walk
+    `hours_ahead` hours forward from `time`, wrapping past midnight, and
+    return the (timestamp, hour_of_day, tier, price) for each.
+    """
+    logger.info("Tool call: get_tariff_schedule(time=%s, hours_ahead=%d)", time, int(hours_ahead))
+
+    try:
+        dt = datetime.fromisoformat(time)
+    except (ValueError, TypeError):
+        dt = datetime.now()
+
+    hours_ahead = max(1, min(48, int(hours_ahead)))
+
+    conn = _get_db()
+    cur = conn.cursor()
+    rows = cur.execute(
+        "SELECT hour, tier, price_per_kwh FROM energy_price ORDER BY hour"
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return {
+            "start_time": time,
+            "hours_ahead": hours_ahead,
+            "schedule": [],
+            "next_off_peak": None,
+            "data_status": "unavailable",
+            "note": "energy_price table is empty",
+        }
+
+    price_by_hour = {int(row["hour"]): (row["tier"], float(row["price_per_kwh"])) for row in rows}
+
+    schedule: list[dict] = []
+    for offset in range(hours_ahead):
+        target_dt = dt + timedelta(hours=offset)
+        hour_of_day = target_dt.hour
+        if hour_of_day not in price_by_hour:
+            continue
+        tier, price = price_by_hour[hour_of_day]
+        schedule.append({
+            "timestamp": target_dt.isoformat(timespec="seconds"),
+            "hour_of_day": hour_of_day,
+            "tier": tier,
+            "price_per_kwh": price,
+        })
+
+    next_off_peak: str | None = None
+    for entry in schedule:
+        if entry["tier"] == "off_peak":
+            next_off_peak = entry["timestamp"]
+            break
+
+    return {
+        "start_time": time,
+        "hours_ahead": hours_ahead,
+        "schedule": schedule,
+        "next_off_peak": next_off_peak,
+        "data_status": "ok",
+    }
+
+
 TOOL_REGISTRY: dict[str, Callable[..., dict]] = {
+    # Original names (parser.py and existing callers use these; keep them)
     "get_weather": get_weather,
     "get_user_habits": get_user_habits,
     "get_room_status": get_room_status,
     "get_energy_price": get_energy_price,
     "get_schedule": get_schedule,
     "get_solar_radiation": get_solar_radiation,
+
+    # Phase 2: new forecast tools (C3 enablers)
+    "get_weather_forecast": get_weather_forecast,
+    "get_tariff_schedule": get_tariff_schedule,
+
+    # Phase 2: Milestone-compliant aliases. Same implementations; these exist
+    # so the LLM can call tools by the names used in the Milestone Report
+    # without us having to rename the functions themselves.
+    "get_current_weather": get_weather,
+    "get_current_tariff": get_energy_price,
+    "get_room_state": get_room_status,
+    "get_user_schedule": get_schedule,
 }
 
 
