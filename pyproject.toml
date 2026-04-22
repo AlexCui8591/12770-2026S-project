@@ -17,4 +17,6 @@ dependencies = [
     "ollama",
     "sqlalchemy",
     "pytest",
+    "json-repair>=0.59.4",
+    "openai>=2.32.0",
 ]

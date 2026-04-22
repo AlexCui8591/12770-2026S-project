@@ -1,0 +1,167 @@
+[
+  {
+    "tag": "single_target_clear_explicit_temp",
+    "query": "Set the bedroom to 22°C.",
+    "expected": {
+      "target_temperature": 22.0,
+      "hvac_mode": "auto",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.33, "comfort": 0.34, "response": 0.33}
+    },
+    "annotation_rationale": "Explicit target, no directional hint (heat vs cool), no preference signal. Mode should be auto; weights should be ~balanced."
+  },
+  {
+    "tag": "single_target_clear_mode_off",
+    "query": "Turn off the heating in the living room.",
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "off",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.34, "comfort": 0.33, "response": 0.33}
+    },
+    "annotation_rationale": "Direct mode command; target_temperature still required by schema but semantically irrelevant when mode=off. LLM outputting 'auto' or 'cool' here is also defensible — manual review."
+  },
+  {
+    "tag": "single_target_clear_multi_field",
+    "query": "Switch to cooling mode and set fan to high.",
+    "expected": {
+      "target_temperature": 23.0,
+      "hvac_mode": "cool",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.25, "comfort": 0.5, "response": 0.25}
+    },
+    "annotation_rationale": "Explicit mode + fan. No temp → default cooling target (23°C). High fan hints at comfort priority; response moderate (not low, since user didn't explicitly ask for speed)."
+  },
+  {
+    "tag": "multi_objective_tradeoff_energy_dominant",
+    "query": "Keep it warm but minimize electricity costs.",
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "heat",
+      "preset_mode": "eco",
+      "cost_weights": {"energy": 0.65, "comfort": 0.25, "response": 0.10}
+    },
+    "annotation_rationale": "Clear 'energy > comfort' signal ('minimize' is strong). Eco preset. Lower target (20°C, warm but frugal). Low response weight: no speed requirement."
+  },
+  {
+    "tag": "multi_objective_tradeoff_three_way",
+    "query": "I want it cool quickly, but don't waste too much energy.",
+    "expected": {
+      "target_temperature": 23.0,
+      "hvac_mode": "cool",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.40, "comfort": 0.45, "response": 0.15}
+    },
+    "annotation_rationale": "'quickly' → LOW response weight (permit aggressive actuation). 'don't waste energy' → non-trivial energy weight. Primary goal (cool/comfort) slightly edges out energy. Expected ranking: comfort > energy > response."
+  },
+  {
+    "tag": "multi_objective_tradeoff_deadline",
+    "query": "Guests arriving at 6 PM, make the living room comfortable by then.",
+    "expected": {
+      "target_temperature": 22.0,
+      "hvac_mode": "auto",
+      "preset_mode": "comfort",
+      "cost_weights": {"energy": 0.15, "comfort": 0.65, "response": 0.20}
+    },
+    "annotation_rationale": "Guests → comfort preset, tight control. Deadline moderately lowers response weight (allow some aggressive actuation to meet time). Energy de-prioritized."
+  },
+  {
+    "tag": "multi_objective_tradeoff_explicit_balance",
+    "query": "Balance comfort and cost for the next 24 hours.",
+    "expected": {
+      "target_temperature": 21.5,
+      "hvac_mode": "auto",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.45, "comfort": 0.45, "response": 0.10}
+    },
+    "annotation_rationale": "Explicit balance request → energy ≈ comfort. 'Next 24 hours' implies sustained operation → low response weight (smooth operation preferred, no urgency). Directly maps to S5 scenario."
+  },
+  {
+    "tag": "implicit_sleep",
+    "query": "I'm going to bed now.",
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "auto",
+      "preset_mode": "sleep",
+      "cost_weights": {"energy": 0.30, "comfort": 0.35, "response": 0.35}
+    },
+    "annotation_rationale": "No explicit temp; infer slightly-cool sleep default (20°C). Sleep preset. HIGH response weight: smooth/quiet at night. Energy moderate (long duration)."
+  },
+  {
+    "tag": "implicit_occupancy_away",
+    "query": "Nobody's home until 6 PM.",
+    "expected": {
+      "target_temperature": 18.0,
+      "hvac_mode": "auto",
+      "preset_mode": "away",
+      "cost_weights": {"energy": 0.70, "comfort": 0.15, "response": 0.15}
+    },
+    "annotation_rationale": "Away preset → widen deadband, low comfort weight, dominant energy weight. Lower setpoint (18°C) saves energy while preventing freeze/overheat. Rationale should mention returning to higher target before 6 PM."
+  },
+  {
+    "tag": "implicit_environmental_hint",
+    "query": "It's getting really sunny outside.",
+    "expected": {
+      "target_temperature": 22.5,
+      "hvac_mode": "cool",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.30, "comfort": 0.45, "response": 0.25}
+    },
+    "annotation_rationale": "Ambiguous — this is really a proactive-adaptation prompt (C3 territory). Reasonable LLM behavior: infer solar gain → pre-cool. Alternative valid answer: mode=auto with no specific change. Treat this case's accuracy as advisory."
+  },
+  {
+    "tag": "vague_relative_delta",
+    "query": "Make it a bit cooler in here.",
+    "expected": {
+      "target_temperature": 22.0,
+      "hvac_mode": "cool",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.30, "comfort": 0.45, "response": 0.25}
+    },
+    "annotation_rationale": "'A bit cooler' → modest -1 to -1.5°C delta. Without current room temp, LLM must assume baseline (23-24°C room → 22°C target). Comfort-leaning weights."
+  },
+  {
+    "tag": "vague_urgent_emotional",
+    "query": "It's freezing, do something!",
+    "expected": {
+      "target_temperature": 22.0,
+      "hvac_mode": "heat",
+      "preset_mode": "boost",
+      "cost_weights": {"energy": 0.10, "comfort": 0.70, "response": 0.20}
+    },
+    "annotation_rationale": "Urgent emotional language → boost preset, LOW response weight (permit aggressive heating), HIGH comfort weight. Energy is afterthought. Key test: does LLM recognize urgency semantically?"
+  },
+  {
+    "tag": "vague_colloquial",
+    "query": "Just make it nice for sleeping, you know what I mean.",
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "auto",
+      "preset_mode": "sleep",
+      "cost_weights": {"energy": 0.30, "comfort": 0.35, "response": 0.35}
+    },
+    "annotation_rationale": "Near-duplicate of Q08 semantically, but colloquial phrasing. Tests whether LLM filters out 'you know what I mean' noise. Expected output identical to Q08."
+  },
+  {
+    "tag": "adversarial_out_of_range",
+    "query": "Set the temperature to 40°C.",
+    "expected": {
+      "target_temperature": 30.0,
+      "hvac_mode": "heat",
+      "preset_mode": "comfort",
+      "cost_weights": {"energy": 0.15, "comfort": 0.70, "response": 0.15}
+    },
+    "annotation_rationale": "ADVERSARIAL. Best behavior: LLM self-corrects to safe max (30°C our schema cap) and explains in rationale. If LLM outputs raw 40, expect VALUE_OUT_OF_RANGE — this is a VALUABLE failure data point for Phase 4 motivation. Review raw_output manually for this case."
+  },
+  {
+    "tag": "adversarial_contradiction",
+    "query": "Make it cooler and warmer at the same time.",
+    "expected": {
+      "target_temperature": 21.5,
+      "hvac_mode": "auto",
+      "preset_mode": "home",
+      "cost_weights": {"energy": 0.33, "comfort": 0.34, "response": 0.33}
+    },
+    "annotation_rationale": "ADVERSARIAL. Best behavior: LLM acknowledges contradiction in rationale, defaults to neutral config. If LLM just picks one direction (e.g. all heat or all cool) that's a weaker but not wrong answer. Rationale quality matters most here — manual review advised."
+  }
+]

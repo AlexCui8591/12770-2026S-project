@@ -1,0 +1,466 @@
+[
+  {
+    "tag": "single_target_clear_explicit_temp",
+    "query": "Set the bedroom to 22 degrees Celsius.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "bedroom",
+      "target_temperature": 22.0,
+      "hvac_mode": "heat",
+      "cost_weights": {
+        "energy": 0.5,
+        "comfort": 0.3,
+        "response": 0.2
+      },
+      "preset_mode": "none",
+      "fan_mode": "low",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User requested 22C, current temp is 23C; choosing heat mode to reduce temperature by 1C. (Validation adjusted: preset_mode 'None' was invalid and fell back to 'none')"
+    },
+    "validator_fixes": [
+      "preset_mode"
+    ],
+    "latency_ms": 20301.81097984314,
+    "target_temp_close": true,
+    "hvac_mode_match": false,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "single_target_clear_mode_off",
+    "query": "Turn off the heating in the living room.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.0,
+      "hvac_mode": "off",
+      "cost_weights": {
+        "energy": 0.25,
+        "comfort": 0.25,
+        "response": 0.5
+      },
+      "preset_mode": "none",
+      "fan_mode": "auto",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User requested to turn off heating in the living room."
+    },
+    "validator_fixes": [],
+    "latency_ms": 6930.789947509766,
+    "target_temp_close": false,
+    "hvac_mode_match": true,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "single_target_clear_multi_field",
+    "query": "Switch to cooling mode and set the fan to high.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.0,
+      "hvac_mode": "cool",
+      "cost_weights": {
+        "energy": 0.25,
+        "comfort": 0.25,
+        "response": 0.5
+      },
+      "preset_mode": "none",
+      "fan_mode": "high",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User requested high fan speed in cooling mode. (Validation adjusted: preset_mode 'None' was invalid and fell back to 'none')"
+    },
+    "validator_fixes": [
+      "preset_mode"
+    ],
+    "latency_ms": 6682.46865272522,
+    "target_temp_close": true,
+    "hvac_mode_match": true,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "multi_objective_tradeoff_energy_dominant",
+    "query": "Keep it warm but minimize electricity costs.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 18.5,
+      "hvac_mode": "heat",
+      "cost_weights": {
+        "energy": 0.5833333333333334,
+        "comfort": 0.25,
+        "response": 0.16666666666666669
+      },
+      "preset_mode": "eco",
+      "fan_mode": "low",
+      "deadband": 1.0,
+      "valid_until": null,
+      "reason": "User wants to keep it warm while minimizing energy costs, so setting a slightly higher target temperature and choosing eco mode with low fan speed."
+    },
+    "validator_fixes": [],
+    "latency_ms": 7335.156202316284,
+    "target_temp_close": false,
+    "hvac_mode_match": true,
+    "preset_match": true,
+    "top_weight_match": true,
+    "full_ranking_match": true,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "multi_objective_tradeoff_three_way",
+    "query": "I want it cool quickly, but don't waste too much energy.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 25.5,
+      "hvac_mode": "cool",
+      "cost_weights": {
+        "energy": 0.4375,
+        "comfort": 0.375,
+        "response": 0.1875
+      },
+      "preset_mode": "none",
+      "fan_mode": "low",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User wants quick cooling and energy efficiency; setting target to 25.5C with low fan speed for quiet operation. (Validation adjusted: preset_mode 'None' was invalid and fell back to 'none')"
+    },
+    "validator_fixes": [
+      "preset_mode"
+    ],
+    "latency_ms": 7192.286014556885,
+    "target_temp_close": false,
+    "hvac_mode_match": true,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "multi_objective_tradeoff_deadline",
+    "query": "Guests arriving at 6 PM, make the living room comfortable by then.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.5,
+      "hvac_mode": "auto",
+      "cost_weights": {
+        "energy": 0.2727272727272727,
+        "comfort": 0.6363636363636362,
+        "response": 0.09090909090909091
+      },
+      "preset_mode": "none",
+      "fan_mode": "low",
+      "deadband": 0.5,
+      "valid_until": "2026-04-22T18:00:00",
+      "reason": "Target temperature adjusted slightly higher to accommodate guests arriving at 6 PM, with a focus on comfort and gentle operation. (Validation adjusted: preset_mode 'None' was invalid and fell back to 'none')"
+    },
+    "validator_fixes": [
+      "preset_mode"
+    ],
+    "latency_ms": 8462.992191314697,
+    "target_temp_close": false,
+    "hvac_mode_match": true,
+    "preset_match": false,
+    "top_weight_match": true,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "multi_objective_tradeoff_explicit_balance",
+    "query": "Balance comfort and cost for the next 24 hours.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.0,
+      "hvac_mode": "auto",
+      "cost_weights": {
+        "energy": 0.3333333333333333,
+        "comfort": 0.3333333333333333,
+        "response": 0.3333333333333333
+      },
+      "preset_mode": "none",
+      "fan_mode": "auto",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "Balancing comfort and cost with moderate weights for the next 24 hours."
+    },
+    "validator_fixes": [],
+    "latency_ms": 7073.426961898804,
+    "target_temp_close": false,
+    "hvac_mode_match": true,
+    "preset_match": true,
+    "top_weight_match": true,
+    "full_ranking_match": true,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "implicit_sleep",
+    "query": "I'm going to bed now.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 21.5,
+      "hvac_mode": "heat",
+      "cost_weights": {
+        "energy": 0.2142857142857143,
+        "comfort": 0.5,
+        "response": 0.28571428571428575
+      },
+      "preset_mode": "sleep",
+      "fan_mode": "low",
+      "deadband": 1.0,
+      "valid_until": null,
+      "reason": "User is going to bed; setting lower temperature and sleep preset for quiet operation."
+    },
+    "validator_fixes": [],
+    "latency_ms": 6737.8339767456055,
+    "target_temp_close": false,
+    "hvac_mode_match": false,
+    "preset_match": true,
+    "top_weight_match": true,
+    "full_ranking_match": true,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "implicit_occupancy_away",
+    "query": "Nobody's home until 6 PM.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.0,
+      "hvac_mode": "heat",
+      "cost_weights": {
+        "energy": 0.5,
+        "comfort": 0.25,
+        "response": 0.25
+      },
+      "preset_mode": "eco",
+      "fan_mode": "low",
+      "deadband": 1.0,
+      "valid_until": null,
+      "reason": "User is not home until 6 PM; setting eco mode with low fan speed and wider deadband for energy savings."
+    },
+    "validator_fixes": [],
+    "latency_ms": 7161.736965179443,
+    "target_temp_close": false,
+    "hvac_mode_match": false,
+    "preset_match": true,
+    "top_weight_match": true,
+    "full_ranking_match": true,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "implicit_environmental_hint",
+    "query": "It's getting really sunny outside.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.0,
+      "hvac_mode": "auto",
+      "cost_weights": {
+        "energy": 0.5,
+        "comfort": 0.4,
+        "response": 0.1
+      },
+      "preset_mode": "none",
+      "fan_mode": "auto",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "Sunny weather does not significantly affect the HVAC settings in auto mode with no explicit temperature change requested."
+    },
+    "validator_fixes": [],
+    "latency_ms": 7537.755727767944,
+    "target_temp_close": true,
+    "hvac_mode_match": false,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "vague_relative_delta",
+    "query": "Make it a bit cooler in here.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.5,
+      "hvac_mode": "cool",
+      "cost_weights": {
+        "energy": 0.3333333333333333,
+        "comfort": 0.3333333333333333,
+        "response": 0.3333333333333333
+      },
+      "preset_mode": "none",
+      "fan_mode": "auto",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User requested a bit cooler, so target temperature is lowered by 0.5C to 23.5C with balanced cost weights. (Validation adjusted: preset_mode 'None' was invalid and fell back to 'none')"
+    },
+    "validator_fixes": [
+      "preset_mode"
+    ],
+    "latency_ms": 7829.161882400513,
+    "target_temp_close": true,
+    "hvac_mode_match": true,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "vague_urgent_emotional",
+    "query": "It's freezing in here, do something!",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 18.0,
+      "hvac_mode": "heat",
+      "cost_weights": {
+        "energy": 0.5,
+        "comfort": 0.3,
+        "response": 0.2
+      },
+      "preset_mode": "none",
+      "fan_mode": "low",
+      "deadband": 1.0,
+      "valid_until": null,
+      "reason": "User requested immediate heating due to cold temperature; setting target to 18C with moderate comfort and energy focus. (Validation adjusted: preset_mode 'None' was invalid and fell back to 'none')"
+    },
+    "validator_fixes": [
+      "preset_mode"
+    ],
+    "latency_ms": 7631.552934646606,
+    "target_temp_close": false,
+    "hvac_mode_match": true,
+    "preset_match": false,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "vague_colloquial",
+    "query": "Just make it nice for sleeping, you know what I mean.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 21.5,
+      "hvac_mode": "heat",
+      "cost_weights": {
+        "energy": 0.7000000000000001,
+        "comfort": 0.20000000000000004,
+        "response": 0.10000000000000002
+      },
+      "preset_mode": "sleep",
+      "fan_mode": "low",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User requested a comfortable temperature for sleeping, so the target temperature is lowered to 21.5C with a preset mode of 'sleep' and low fan speed."
+    },
+    "validator_fixes": [],
+    "latency_ms": 8291.099071502686,
+    "target_temp_close": false,
+    "hvac_mode_match": false,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "adversarial_out_of_range",
+    "query": "Set the temperature to 40 degrees Celsius.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 30.0,
+      "hvac_mode": "cool",
+      "cost_weights": {
+        "energy": 0.3333333333333333,
+        "comfort": 0.3333333333333333,
+        "response": 0.3333333333333333
+      },
+      "preset_mode": "none",
+      "fan_mode": "auto",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User requested temperature of 40C, clamped to maximum safe value of 30C for cooling. (Validation adjusted: preset_mode 'None' was invalid and fell back to 'none')"
+    },
+    "validator_fixes": [
+      "preset_mode"
+    ],
+    "latency_ms": 7639.824151992798,
+    "target_temp_close": true,
+    "hvac_mode_match": false,
+    "preset_match": false,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  },
+  {
+    "tag": "adversarial_contradiction",
+    "query": "Make it cooler and warmer at the same time.",
+    "success": true,
+    "error": null,
+    "error_type": "none",
+    "output": {
+      "room": "living_room",
+      "target_temperature": 23.0,
+      "hvac_mode": "auto",
+      "cost_weights": {
+        "energy": 0.3333333333333333,
+        "comfort": 0.3333333333333333,
+        "response": 0.3333333333333333
+      },
+      "preset_mode": "none",
+      "fan_mode": "auto",
+      "deadband": 0.5,
+      "valid_until": null,
+      "reason": "User request is contradictory, choosing a neutral config."
+    },
+    "validator_fixes": [],
+    "latency_ms": 6919.134855270386,
+    "target_temp_close": false,
+    "hvac_mode_match": true,
+    "preset_match": true,
+    "top_weight_match": false,
+    "full_ranking_match": false,
+    "cost_weights_defaulted": false
+  }
+]

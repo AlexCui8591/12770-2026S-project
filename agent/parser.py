@@ -1,4 +1,12 @@
-"""Core agent parsing flow: natural language -> Ollama -> structured JSON."""
+"""Core agent parsing flow: natural language -> Ollama -> structured JSON.
+
+Minimum-invasive change vs previous version:
+  Removed _attach_required_output_data() and _unavailable_solar_payload(), and
+  their two call sites in Strategy A and Strategy B. Previously the code
+  forcibly injected solar_radiation into the LLM output dict; this was wrong
+  because solar data is a TOOL INPUT (via tools.get_solar_radiation), not an
+  OUTPUT field. All dual-strategy / retry / tool-calling logic is unchanged.
+"""
 
 from __future__ import annotations
 
@@ -117,31 +125,6 @@ def _extract_json(text: str) -> dict:
     raise ParseError(f"LLM response could not be parsed as JSON: {text[:300]}")
 
 
-def _unavailable_solar_payload(time: str) -> dict:
-    return {
-        "requested_time": time,
-        "data_status": "unavailable",
-        "note": "get_solar_radiation failed, so an unavailable placeholder was used.",
-    }
-
-
-def _attach_required_output_data(
-    raw_output: dict,
-    agent_input: AgentInput,
-    tool_results: dict[str, dict] | None = None,
-) -> dict:
-    solar_data = None
-    if tool_results:
-        solar_data = tool_results.get("get_solar_radiation")
-    if solar_data is None:
-        solar_data = dispatch_tool_call(
-            "get_solar_radiation",
-            {"time": agent_input.current_context.time},
-        )
-    raw_output["solar_radiation"] = solar_data or _unavailable_solar_payload(agent_input.current_context.time)
-    return raw_output
-
-
 def _parse_with_tool_calling(
     agent_input: AgentInput,
     client: OpenAI,
@@ -194,7 +177,6 @@ def _parse_with_tool_calling(
     content = choice.message.content or ""
     logger.debug("[Strategy A] raw LLM output:\n%s", content)
     raw_output = _extract_json(content)
-    raw_output = _attach_required_output_data(raw_output, agent_input)
     return validate_and_fix(raw_output, agent_input.current_context)
 
 
@@ -265,7 +247,6 @@ def _parse_with_prompt_injection(
     content = response.choices[0].message.content or ""
     logger.debug("[Strategy B] raw LLM output:\n%s", content)
     raw_output = _extract_json(content)
-    raw_output = _attach_required_output_data(raw_output, agent_input, tool_results)
     return validate_and_fix(raw_output, agent_input.current_context)
 
 

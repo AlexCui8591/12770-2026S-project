@@ -1,0 +1,178 @@
+[
+  {
+    "tag": "single_target_clear_explicit_temp",
+    "query": "Set the bedroom to 22 degrees Celsius.",
+    "context_overrides": {"room": "bedroom"},
+    "expected": {
+      "target_temperature": 22.0,
+      "hvac_mode": "auto",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.33, "comfort": 0.34, "response": 0.33}
+    },
+    "annotation_rationale": "Explicit target, no directional hint, no preference signal. Balanced weights."
+  },
+  {
+    "tag": "single_target_clear_mode_off",
+    "query": "Turn off the heating in the living room.",
+    "context_overrides": {"room": "living_room", "current_hvac_mode": "heat"},
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "off",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.34, "comfort": 0.33, "response": 0.33}
+    },
+    "annotation_rationale": "Mode command; temp semantically irrelevant under 'off'."
+  },
+  {
+    "tag": "single_target_clear_multi_field",
+    "query": "Switch to cooling mode and set the fan to high.",
+    "expected": {
+      "target_temperature": 23.0,
+      "hvac_mode": "cool",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.25, "comfort": 0.5, "response": 0.25}
+    },
+    "annotation_rationale": "Explicit mode + fan. No temp -> default cooling 23C."
+  },
+  {
+    "tag": "multi_objective_tradeoff_energy_dominant",
+    "query": "Keep it warm but minimize electricity costs.",
+    "context_overrides": {"current_temperature": 18.0},
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "heat",
+      "preset_mode": "eco",
+      "cost_weights": {"energy": 0.65, "comfort": 0.25, "response": 0.10}
+    },
+    "annotation_rationale": "Clear energy dominance ('minimize'). Eco preset. Lower target saves energy."
+  },
+  {
+    "tag": "multi_objective_tradeoff_three_way",
+    "query": "I want it cool quickly, but don't waste too much energy.",
+    "context_overrides": {"current_temperature": 27.0},
+    "expected": {
+      "target_temperature": 23.0,
+      "hvac_mode": "cool",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.40, "comfort": 0.45, "response": 0.15}
+    },
+    "annotation_rationale": "'quickly' -> LOW response weight. 'don't waste' -> non-trivial energy. Ranking: comfort > energy > response."
+  },
+  {
+    "tag": "multi_objective_tradeoff_deadline",
+    "query": "Guests arriving at 6 PM, make the living room comfortable by then.",
+    "context_overrides": {"room": "living_room", "time": "2026-04-22T16:00:00"},
+    "expected": {
+      "target_temperature": 22.0,
+      "hvac_mode": "auto",
+      "preset_mode": "comfort",
+      "cost_weights": {"energy": 0.15, "comfort": 0.65, "response": 0.20}
+    },
+    "annotation_rationale": "Guests -> comfort preset. Deadline -> reduced response weight. Energy de-prioritized."
+  },
+  {
+    "tag": "multi_objective_tradeoff_explicit_balance",
+    "query": "Balance comfort and cost for the next 24 hours.",
+    "expected": {
+      "target_temperature": 21.5,
+      "hvac_mode": "auto",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.45, "comfort": 0.45, "response": 0.10}
+    },
+    "annotation_rationale": "Explicit balance -> energy ≈ comfort. 24h horizon -> low response. Top-weight metric has ties; use full-ranking."
+  },
+  {
+    "tag": "implicit_sleep",
+    "query": "I'm going to bed now.",
+    "context_overrides": {"time": "2026-04-22T22:30:00"},
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "auto",
+      "preset_mode": "sleep",
+      "cost_weights": {"energy": 0.30, "comfort": 0.35, "response": 0.35}
+    },
+    "annotation_rationale": "Sleep preset. Lower target (20C). HIGH response weight: smooth at night."
+  },
+  {
+    "tag": "implicit_occupancy_away",
+    "query": "Nobody's home until 6 PM.",
+    "context_overrides": {"occupied": false, "time": "2026-04-22T09:00:00"},
+    "expected": {
+      "target_temperature": 18.0,
+      "hvac_mode": "auto",
+      "preset_mode": "eco",
+      "cost_weights": {"energy": 0.70, "comfort": 0.15, "response": 0.15}
+    },
+    "annotation_rationale": "No 'away' preset in schema -> 'eco' is closest. Dominant energy weight."
+  },
+  {
+    "tag": "implicit_environmental_hint",
+    "query": "It's getting really sunny outside.",
+    "context_overrides": {"time": "2026-04-22T13:00:00"},
+    "expected": {
+      "target_temperature": 22.5,
+      "hvac_mode": "cool",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.30, "comfort": 0.45, "response": 0.25}
+    },
+    "annotation_rationale": "Ambiguous proactive-adaptation query. Treat accuracy as advisory."
+  },
+  {
+    "tag": "vague_relative_delta",
+    "query": "Make it a bit cooler in here.",
+    "context_overrides": {"current_temperature": 24.0},
+    "expected": {
+      "target_temperature": 23.0,
+      "hvac_mode": "cool",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.30, "comfort": 0.45, "response": 0.25}
+    },
+    "annotation_rationale": "'A bit cooler' -> ~1C below current (24C). Target 23C."
+  },
+  {
+    "tag": "vague_urgent_emotional",
+    "query": "It's freezing in here, do something!",
+    "context_overrides": {"current_temperature": 15.0},
+    "expected": {
+      "target_temperature": 22.0,
+      "hvac_mode": "heat",
+      "preset_mode": "comfort",
+      "cost_weights": {"energy": 0.10, "comfort": 0.70, "response": 0.20}
+    },
+    "annotation_rationale": "No 'boost' preset in schema -> 'comfort' is closest. LOW response (permit aggressive). HIGH comfort."
+  },
+  {
+    "tag": "vague_colloquial",
+    "query": "Just make it nice for sleeping, you know what I mean.",
+    "context_overrides": {"time": "2026-04-22T23:00:00"},
+    "expected": {
+      "target_temperature": 20.0,
+      "hvac_mode": "auto",
+      "preset_mode": "sleep",
+      "cost_weights": {"energy": 0.30, "comfort": 0.35, "response": 0.35}
+    },
+    "annotation_rationale": "Near-duplicate of implicit_sleep. Tests colloquial filtering."
+  },
+  {
+    "tag": "adversarial_out_of_range",
+    "query": "Set the temperature to 40 degrees Celsius.",
+    "expected": {
+      "target_temperature": 30.0,
+      "hvac_mode": "heat",
+      "preset_mode": "comfort",
+      "cost_weights": {"energy": 0.15, "comfort": 0.70, "response": 0.15}
+    },
+    "annotation_rationale": "ADVERSARIAL. Validator clamps 40 -> 30. Review raw output + validator_fixes manually."
+  },
+  {
+    "tag": "adversarial_contradiction",
+    "query": "Make it cooler and warmer at the same time.",
+    "expected": {
+      "target_temperature": 21.5,
+      "hvac_mode": "auto",
+      "preset_mode": "none",
+      "cost_weights": {"energy": 0.33, "comfort": 0.34, "response": 0.33}
+    },
+    "annotation_rationale": "ADVERSARIAL. Best: LLM acknowledges contradiction in reason, defaults to neutral config."
+  }
+]

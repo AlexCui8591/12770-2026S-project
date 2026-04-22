@@ -8,8 +8,11 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-TEMP_MIN = 20.0
-TEMP_MAX = 28.0
+# Operating temperature bounds. The validator clamps any LLM output to this
+# range. Widened from the previous 20-28 to match the Milestone's safe
+# operating range so that eco/away setpoints (e.g. 18°C) are reachable.
+TEMP_MIN = 16.0
+TEMP_MAX = 30.0
 
 VALID_HVAC_MODES = {"cool", "heat", "off", "auto"}
 VALID_PRESET_MODES = {"eco", "sleep", "comfort", "none"}
@@ -72,15 +75,37 @@ class AgentInput:
 
 
 @dataclass
+class CostWeights:
+    """Multi-objective cost function weights for the downstream PID optimizer.
+
+    J = w_comfort * integral(e^2) + w_energy * integral(P) + w_response * integral((du/dt)^2)
+
+    Stored after normalization so that the three weights sum to 1. The raw
+    LLM output does NOT need to be pre-normalized; validate_and_fix handles it.
+    """
+
+    energy: float
+    comfort: float
+    response: float
+
+    def to_dict(self) -> dict:
+        return {"energy": self.energy, "comfort": self.comfort, "response": self.response}
+
+    @classmethod
+    def equal(cls) -> CostWeights:
+        return cls(energy=1 / 3, comfort=1 / 3, response=1 / 3)
+
+
+@dataclass
 class AgentOutput:
     room: str
     target_temperature: float
     hvac_mode: str
+    cost_weights: CostWeights
     preset_mode: str = "none"
     fan_mode: str = "auto"
     deadband: float = DEADBAND_DEFAULT
     valid_until: Optional[str] = None
-    solar_radiation: dict[str, Any] = field(default_factory=dict)
     reason: str = ""
 
     def to_dict(self) -> dict:
@@ -88,13 +113,39 @@ class AgentOutput:
             "room": self.room,
             "target_temperature": self.target_temperature,
             "hvac_mode": self.hvac_mode,
+            "cost_weights": self.cost_weights.to_dict(),
             "preset_mode": self.preset_mode,
             "fan_mode": self.fan_mode,
             "deadband": self.deadband,
             "valid_until": self.valid_until,
-            "solar_radiation": self.solar_radiation,
             "reason": self.reason,
         }
+
+
+def _normalize_cost_weights(raw: Any) -> tuple[CostWeights, Optional[str]]:
+    """Parse, sanitize, and normalize cost_weights.
+
+    Returns (weights, reason_note_or_None). The reason_note is appended to
+    the AgentOutput.reason so that downstream analysis can detect when the
+    LLM failed to produce valid weights (important for H2 evaluation).
+    """
+    if not isinstance(raw, dict):
+        return CostWeights.equal(), "cost_weights was missing or malformed; equal weights applied"
+
+    try:
+        energy = max(0.0, float(raw.get("energy", 0)))
+        comfort = max(0.0, float(raw.get("comfort", 0)))
+        response = max(0.0, float(raw.get("response", 0)))
+    except (TypeError, ValueError):
+        return CostWeights.equal(), "cost_weights contained non-numeric values; equal weights applied"
+
+    total = energy + comfort + response
+    if total == 0:
+        return CostWeights.equal(), "all cost_weights were zero; equal weights applied"
+
+    # Normalize so the three weights sum to 1 (decision: normalization happens
+    # in the validator, not in the LLM prompt).
+    return CostWeights(energy / total, comfort / total, response / total), None
 
 
 def validate_and_fix(raw: dict, fallback_context: CurrentContext) -> AgentOutput:
@@ -144,13 +195,9 @@ def validate_and_fix(raw: dict, fallback_context: CurrentContext) -> AgentOutput
 
     valid_until = raw.get("valid_until")
 
-    solar_radiation = raw.get("solar_radiation")
-    if not isinstance(solar_radiation, dict):
-        solar_radiation = {
-            "data_status": "unavailable",
-            "note": "solar_radiation was missing, so an unavailable placeholder was used",
-        }
-        reasons.append("solar_radiation was missing, so an unavailable placeholder was used")
+    cost_weights, cw_note = _normalize_cost_weights(raw.get("cost_weights"))
+    if cw_note is not None:
+        reasons.append(cw_note)
 
     original_reason = raw.get("reason", "")
     if reasons:
@@ -165,10 +212,10 @@ def validate_and_fix(raw: dict, fallback_context: CurrentContext) -> AgentOutput
         room=room,
         target_temperature=temp,
         hvac_mode=hvac_mode,
+        cost_weights=cost_weights,
         preset_mode=preset_mode,
         fan_mode=fan_mode,
         deadband=deadband,
         valid_until=valid_until,
-        solar_radiation=solar_radiation,
         reason=original_reason,
     )
