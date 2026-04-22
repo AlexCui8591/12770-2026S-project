@@ -176,10 +176,17 @@ def validate_and_fix(raw: dict, fallback_context: CurrentContext) -> AgentOutput
         reasons.append(f"hvac_mode '{hvac_mode}' was invalid and fell back to '{fallback}'")
         hvac_mode = fallback
 
-    preset_mode = raw.get("preset_mode", "none")
-    if preset_mode not in VALID_PRESET_MODES:
-        reasons.append(f"preset_mode '{preset_mode}' was invalid and fell back to 'none'")
+    # preset_mode: treat null / missing as "none" silently (it's a valid
+    # signal meaning "no special preset applies"). Only log a correction
+    # when the LLM actively outputs a string that isn't in the allowed set.
+    preset_mode_raw = raw.get("preset_mode")
+    if preset_mode_raw is None:
         preset_mode = "none"
+    elif preset_mode_raw not in VALID_PRESET_MODES:
+        reasons.append(f"preset_mode '{preset_mode_raw}' was invalid and fell back to 'none'")
+        preset_mode = "none"
+    else:
+        preset_mode = preset_mode_raw
 
     fan_mode = raw.get("fan_mode", "auto")
     if fan_mode not in VALID_FAN_MODES:
