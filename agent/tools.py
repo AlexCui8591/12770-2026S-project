@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 import yaml
+from agent.mock_pid import DEFAULT_CONTROLLER
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +233,29 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     },
                 },
                 "required": ["time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_pid_telemetry",
+            "description": (
+                "Read the current PID controller state for supervisory reasoning. "
+                "Returns gains (kp, ki, kd), setpoint, indoor_temp, tracking_error, "
+                "control_signal (W), cumulative_energy_kwh, oscillation_count, "
+                "cost_J (Milestone eq. 2), and timestamp. Use this to decide "
+                "whether to HOLD, adjust gains, shift setpoint, or modify cost weights."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "room": {
+                        "type": "string",
+                        "description": "Room ID. Defaults to 'default' if your system is single-zone.",
+                    },
+                },
+                "required": [],
             },
         },
     },
@@ -707,6 +731,17 @@ def get_tariff_schedule(time: str, hours_ahead: int = 24) -> dict:
         "data_status": "ok",
     }
 
+def get_pid_telemetry(room: str = "default") -> dict:
+    """..."""
+    logger.info("Tool call: get_pid_telemetry(room=%s)", room)
+    # Import at call time so install_scenario() rebindings are visible.
+    # If we used `from agent.mock_pid import DEFAULT_CONTROLLER` at module
+    # top, we'd see a stale reference to the original controller.
+    from agent import mock_pid
+    telemetry = mock_pid.DEFAULT_CONTROLLER.get_telemetry()
+    telemetry["room"] = room
+    telemetry["source"] = "mock"
+    return telemetry
 
 TOOL_REGISTRY: dict[str, Callable[..., dict]] = {
     # Original names (parser.py and existing callers use these; keep them)
@@ -728,6 +763,8 @@ TOOL_REGISTRY: dict[str, Callable[..., dict]] = {
     "get_current_tariff": get_energy_price,
     "get_room_state": get_room_status,
     "get_user_schedule": get_schedule,
+    "get_pid_telemetry": get_pid_telemetry,
+    "get_pid_state":     get_pid_telemetry,
 }
 
 

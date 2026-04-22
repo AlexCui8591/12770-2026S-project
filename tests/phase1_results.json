@@ -18,10 +18,10 @@
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested 22°C, which is slightly lower than current 23°C → cool mode."
+      "reason": "User requested 22°C, which is slightly lower than current 23°C. Target < current → cool mode."
     },
     "validator_fixes": [],
-    "latency_ms": 25214.43009376526,
+    "latency_ms": 30521.54231071472,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -41,17 +41,17 @@
       "hvac_mode": "off",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.34,
-        "response": 0.33
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested to turn off heating. Target matches current temperature, so mode is set to 'off'. No strong preference signal for energy or comfort."
+      "reason": "User requested to turn off heating; no specific temperature or comfort signal given."
     },
     "validator_fixes": [],
-    "latency_ms": 7989.7730350494385,
+    "latency_ms": 7189.2149448394775,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -71,21 +71,21 @@
       "hvac_mode": "cool",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.34,
-        "response": 0.33
+        "comfort": 0.33,
+        "response": 0.34
       },
       "preset_mode": "none",
       "fan_mode": "high",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested cooling and high fan speed. Target near current temperature to avoid cycling. target ≈ current → cool mode."
+      "reason": "User requested cooling mode and high fan speed."
     },
     "validator_fixes": [],
-    "latency_ms": 7533.281087875366,
+    "latency_ms": 6193.941116333008,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
-    "weight_match": true,
+    "weight_match": false,
     "weight_pattern": "clear",
     "cost_weights_defaulted": false
   },
@@ -100,18 +100,18 @@
       "target_temperature": 20.5,
       "hvac_mode": "heat",
       "cost_weights": {
-        "energy": 0.65,
-        "comfort": 0.25,
-        "response": 0.1
+        "energy": 0.6000000000000001,
+        "comfort": 0.30000000000000004,
+        "response": 0.10000000000000002
       },
       "preset_mode": "eco",
       "fan_mode": "low",
       "deadband": 1.0,
       "valid_until": null,
-      "reason": "User wants to minimize energy costs while keeping warm. Target slightly above current temp (20.5°C) for comfort. Eco preset + low fan speed."
+      "reason": "User wants to minimize energy costs while keeping warm. Target is set slightly above current temperature (20.5°C) and eco preset with low response weight permits aggressive heating."
     },
     "validator_fixes": [],
-    "latency_ms": 7159.158706665039,
+    "latency_ms": 8280.14612197876,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -135,13 +135,13 @@
         "response": 0.2
       },
       "preset_mode": "none",
-      "fan_mode": "medium",
-      "deadband": 1.0,
+      "fan_mode": "high",
+      "deadband": 0.5,
       "valid_until": null,
-      "reason": "User wants quick cooling but energy efficiency. Target below current temp for fast response. Medium fan speed balances comfort and quiet operation."
+      "reason": "User wants quick cooling and energy efficiency. Target set below current to initiate cooling, high response weight for fast action, balanced comfort and energy weights."
     },
     "validator_fixes": [],
-    "latency_ms": 6754.477977752686,
+    "latency_ms": 8065.544843673706,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -167,11 +167,11 @@
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 0.5,
-      "valid_until": "2026-04-22T18:00:00+00:00",
-      "reason": "Guests arriving soon; target set slightly above current to ensure comfort by 6 PM."
+      "valid_until": "2026-04-22T18:00:00",
+      "reason": "Guests arriving at 6 PM (18:00) requires comfort by then. Target temperature set slightly above current to ensure readiness. auto mode allows system to adjust as needed."
     },
     "validator_fixes": [],
-    "latency_ms": 7726.030111312866,
+    "latency_ms": 9636.929035186768,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": false,
@@ -191,17 +191,17 @@
       "hvac_mode": "auto",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.33,
-        "response": 0.34
+        "comfort": 0.34,
+        "response": 0.33
       },
       "preset_mode": "none",
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "Balanced comfort and cost priorities with user's request."
+      "reason": "Balanced comfort and cost for the next 24 hours with no strong signals."
     },
     "validator_fixes": [],
-    "latency_ms": 5968.186140060425,
+    "latency_ms": 7458.080053329468,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -228,10 +228,10 @@
       "fan_mode": "low",
       "deadband": 0.8,
       "valid_until": null,
-      "reason": "User is going to bed; prefer sleep preset for stability and quiet operation."
+      "reason": "User is going to bed; prefer stable temperature for sleep (21-23°C). target slightly below current → auto mode."
     },
     "validator_fixes": [],
-    "latency_ms": 6235.099077224731,
+    "latency_ms": 7189.059019088745,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -251,20 +251,20 @@
       "hvac_mode": "auto",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.33,
-        "response": 0.34
+        "comfort": 0.34,
+        "response": 0.33
       },
-      "preset_mode": "eco",
+      "preset_mode": "none",
       "fan_mode": "low",
       "deadband": 1.0,
       "valid_until": "2026-04-22T18:00:00",
-      "reason": "User not home until 6 PM; eco mode and wider deadband to save energy during absence."
+      "reason": "User not home until 6 PM, no specific temperature change requested. Balanced weights and low deadband to avoid cycling while maintaining comfort."
     },
     "validator_fixes": [],
-    "latency_ms": 7666.2609577178955,
+    "latency_ms": 9124.409198760986,
     "target_temp_close": false,
     "hvac_mode_match": true,
-    "preset_match": true,
+    "preset_match": false,
     "weight_match": false,
     "weight_pattern": "clear",
     "cost_weights_defaulted": false
@@ -281,21 +281,21 @@
       "hvac_mode": "auto",
       "cost_weights": {
         "energy": 0.33,
-        "comfort": 0.33,
-        "response": 0.34
+        "comfort": 0.34,
+        "response": 0.33
       },
       "preset_mode": "none",
-      "fan_mode": "auto",
+      "fan_mode": "low",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "Sunny day may increase solar heat gain; slightly raise target temperature for comfort."
+      "reason": "Sunny day outside may increase solar heat gain; slightly raise target temperature to account for this."
     },
     "validator_fixes": [],
-    "latency_ms": 6307.037830352783,
+    "latency_ms": 6710.308790206909,
     "target_temp_close": true,
     "hvac_mode_match": false,
     "preset_match": true,
-    "weight_match": false,
+    "weight_match": true,
     "weight_pattern": "clear",
     "cost_weights_defaulted": false
   },
@@ -318,10 +318,10 @@
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "User requested a bit cooler. Target slightly below current temperature to provide comfort without overcooling."
+      "reason": "User requested a bit cooler; target temperature adjusted to 23°C from current 24°C."
     },
     "validator_fixes": [],
-    "latency_ms": 6442.924976348877,
+    "latency_ms": 6741.00399017334,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -351,7 +351,7 @@
       "reason": "Strong cold discomfort. Target the comfort zone (22°C), not a small incremental change. Low response weight permits aggressive heating."
     },
     "validator_fixes": [],
-    "latency_ms": 7724.325895309448,
+    "latency_ms": 7956.363916397095,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -378,10 +378,10 @@
       "fan_mode": "low",
       "deadband": 0.8,
       "valid_until": null,
-      "reason": "User wants a comfortable sleeping temperature (21-23°C). Low response weight for quiet operation during sleep."
+      "reason": "User wants a comfortable sleeping temperature (21-23°C). Target setpoint is within the comfort zone and low fan speed for quiet operation."
     },
     "validator_fixes": [],
-    "latency_ms": 6713.498115539551,
+    "latency_ms": 7319.503307342529,
     "target_temp_close": false,
     "hvac_mode_match": true,
     "preset_match": true,
@@ -408,10 +408,10 @@
       "fan_mode": "auto",
       "deadband": 0.5,
       "valid_until": null,
-      "reason": "Target temperature clamped to 30°C (max). User requested 40°C but this is outside the safe range."
+      "reason": "User requested an impossible temperature (40°C). Clamped to maximum safe value of 30°C. target > current → heat mode."
     },
     "validator_fixes": [],
-    "latency_ms": 6835.9739780426025,
+    "latency_ms": 7191.366910934448,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": false,
@@ -436,12 +436,12 @@
       },
       "preset_mode": "none",
       "fan_mode": "auto",
-      "deadband": 0.5,
+      "deadband": 1.0,
       "valid_until": null,
-      "reason": "User request is contradictory (cooler and warmer simultaneously). Target near current temperature to avoid aggressive changes. Balanced cost_weights as no preference signal."
+      "reason": "User request is contradictory ('cooler and warmer at the same time'). Picking a neutral config near current temperature, mode = auto. target ≈ current → auto mode."
     },
     "validator_fixes": [],
-    "latency_ms": 6806.653022766113,
+    "latency_ms": 7927.242994308472,
     "target_temp_close": true,
     "hvac_mode_match": true,
     "preset_match": true,

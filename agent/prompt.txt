@@ -18,6 +18,25 @@ You may use these tools to gather additional information:
 - get_tariff_schedule(time, hours_ahead): ELECTRICITY TARIFF SCHEDULE for the next hours_ahead hours. Returns hourly tiers + next off_peak window timestamp. Use this when deciding whether to shift load to cheaper hours.
 - get_schedule(user_id, date): the user's daily schedule (leave_home / return_home events)
 - get_solar_radiation(time, latitude?, longitude?, timezone?): solar radiation (GHI/DNI/DHI), defaulting to Pittsburgh
+- get_pid_telemetry(room): current PID controller state — gains (kp, ki, kd), setpoint, indoor_temp, tracking_error, control_signal, cumulative_energy_kwh, oscillation_count, cost_J, timestamp. Use this ONLY when acting as an online supervisor reviewing the controller's live behavior; it is NOT needed for initial intent parsing.
+
+## When to use CURRENT vs FORECAST tools
+
+Choosing the right tool avoids wasted calls and missed context. Rule of thumb:
+
+- Use the CURRENT tools (get_weather, get_energy_price) when the user's request
+  is about the present moment only and there is no upcoming time-dependent event.
+
+- Use the FORECAST tools (get_weather_forecast, get_tariff_schedule) when the
+  user's request implies a future-oriented decision:
+    * explicit future time ("6 PM", "tomorrow morning", "overnight", "in two hours")
+    * environmental anticipation ("it's getting cold out", "sunny day ahead")
+    * cost-shifting intent ("save power", "cheap electricity", "off-peak")
+    * planning for a duration ("for the next 24 hours", "through the night")
+
+- Combining them is often correct: for "minimize cost overnight" you likely want
+  BOTH get_tariff_schedule (to know when off-peak starts) AND get_weather_forecast
+  (to know how hard the HVAC will have to work).
 
 Tool rules:
 - Use tools only when helpful.
