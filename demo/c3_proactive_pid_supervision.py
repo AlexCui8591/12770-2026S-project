@@ -28,7 +28,9 @@ Outputs
 
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,10 +38,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-RC_JSON = "config/rc_fit_results.json"
-TEMP_CSV = "data/synthetic_outdoor_temperature_two_days.csv"
-C0_SUMMARY_JSON = "outputs/c0_tuned_pid_outputs/c0_run_summary.json"
+from agent.mock_pid import update_default_controller
+from agent.proactive_supervisor import (
+    DEFAULT_MODEL,
+    ProactiveSupervisorInput,
+    decide_proactive_pid,
+)
+from agent.supervisor import check_ollama_connection, create_ollama_client
+from agent.tools import clear_tool_overrides, set_tool_override
+
+BASE_DIR = Path(__file__).resolve().parent
+
+RC_JSON = BASE_DIR / "config" / "rc_fit_results.json"
+TEMP_CSV = BASE_DIR / "data" / "synthetic_outdoor_temperature_two_days.csv"
+C0_SUMMARY_JSON = BASE_DIR / "outputs" / "c0_tuned_pid_outputs" / "c0_run_summary.json"
 
 # Manual fallback if the C0 summary file is not available.
 C0_KP = None
@@ -83,8 +99,17 @@ TARIFF_OFFPEAK = 0.12
 TARIFF_ONPEAK = 0.20
 ONPEAK_HOURS = set(range(16, 21))  # 16:00-20:59
 
-OUTPUT_DIR = Path("outputs/c3_proactive_pid_outputs")
+OUTPUT_DIR = BASE_DIR / "outputs" / "c3_proactive_pid_outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+DEFAULT_USER_OBJECTIVE = (
+    "Keep the bedroom comfortable with proactive adjustments ahead of forecast "
+    "changes and scheduled comfort needs."
+)
+DEFAULT_ROOM = "bedroom"
+DEFAULT_CITY = "Pittsburgh"
+DEFAULT_USER_ID = "default"
+TOOL_OVERRIDE_NAMES = ["get_weather_forecast", "get_schedule"]
 
 
 def build_instruction_log() -> pd.DataFrame:
@@ -346,6 +371,7 @@ def summarize_window(
             "max_abs_error": 0.0,
             "power_mean_W": 0.0,
             "power_std_W": 0.0,
+            "last_power_W": 0.0,
             "energy_kWh": 0.0,
             "error_sign_changes": 0,
             "last_error": 0.0,
@@ -368,6 +394,7 @@ def summarize_window(
         "max_abs_error": float(np.max(np.abs(e_w))),
         "power_mean_W": float(np.mean(p_w)),
         "power_std_W": float(np.std(p_w)),
+        "last_power_W": float(p_w[-1]),
         "energy_kWh": energy_kwh,
         "error_sign_changes": int(sign_changes),
         "last_error": float(e_w[-1]),
@@ -505,6 +532,190 @@ def proactive_pid_supervisor(
     return new_kp, new_ki, new_kd, action, reason
 
 
+def _sync_agent_pid_snapshot(
+    ts: pd.Timestamp,
+    telemetry: dict[str, float | int | str],
+    kp: float,
+    ki: float,
+    kd: float,
+    ta_now: float,
+) -> None:
+    cost_proxy = float(telemetry["mean_abs_error"]) ** 2 + float(telemetry["energy_kWh"]) * 10.0
+    update_default_controller(
+        kp=kp,
+        ki=ki,
+        kd=kd,
+        setpoint=float(telemetry["current_tsp"]),
+        indoor_temp=float(telemetry["current_ti"]),
+        tracking_error=float(telemetry["last_error"]),
+        control_signal=float(telemetry["last_power_W"]),
+        cumulative_energy_kwh=float(telemetry["energy_kWh"]),
+        oscillation_count=int(telemetry["error_sign_changes"]),
+        cost_J=cost_proxy,
+        outdoor_temp=float(ta_now),
+        timestamp=ts.to_pydatetime(),
+    )
+
+
+def _build_weather_forecast_override(
+    time_index: pd.DatetimeIndex,
+    ta_array: np.ndarray,
+    current_idx: int,
+):
+    def _override(city: str, hours_ahead: int = 24) -> dict:
+        hours_ahead = max(1, min(72, int(hours_ahead)))
+        horizon_steps = min(len(ta_array) - current_idx - 1, hours_ahead * 60)
+        sample_offsets = list(range(0, max(1, horizon_steps) + 1, 180))
+        if not sample_offsets:
+            sample_offsets = [0]
+
+        points = []
+        for offset in sample_offsets:
+            idx = min(len(ta_array) - 1, current_idx + offset)
+            points.append(
+                {
+                    "timestamp": pd.Timestamp(time_index[idx]).isoformat(),
+                    "outdoor_temp": float(ta_array[idx]),
+                    "humidity": 50,
+                    "condition": "synthetic",
+                    "wind_speed_kmh": 0,
+                    "chance_of_rain": 0,
+                }
+            )
+
+        return {
+            "city": city,
+            "hours_ahead": hours_ahead,
+            "granularity_hours": 3,
+            "points": points,
+            "source": "synthetic_scenario",
+        }
+
+    return _override
+
+
+def _build_schedule_override(current_ts: pd.Timestamp):
+    def _override(user_id: str, date: str) -> dict:
+        events = []
+        base_day = current_ts.normalize()
+        for event in habit_event_schedule():
+            event_ts = base_day + pd.Timedelta(hours=int(event["hour"]))
+            if event_ts >= current_ts:
+                events.append(
+                    {
+                        "type": str(event["type"]),
+                        "at": event_ts.isoformat(),
+                        "note": str(event["label"]),
+                    }
+                )
+        return {"events": events, "source": "synthetic_schedule"}
+
+    return _override
+
+
+def _install_proactive_tool_context(
+    time_index: pd.DatetimeIndex,
+    ta_array: np.ndarray,
+    current_idx: int,
+) -> None:
+    set_tool_override(
+        "get_weather_forecast",
+        _build_weather_forecast_override(time_index, ta_array, current_idx),
+    )
+    set_tool_override(
+        "get_schedule",
+        _build_schedule_override(time_index[current_idx]),
+    )
+
+
+def _agent_proactive_pid_supervisor(
+    time_index: pd.DatetimeIndex,
+    idx: int,
+    ta_array: np.ndarray,
+    telemetry: dict[str, float | int | str],
+    forecast: dict[str, float | int | str],
+    kp: float,
+    ki: float,
+    kd: float,
+    *,
+    room: str,
+    city: str,
+    user_id: str,
+    user_objective: str,
+    llm_model: str,
+    allow_fallback: bool,
+    supervisor_client=None,
+) -> tuple[float, float, float, str, str, str, str]:
+    _sync_agent_pid_snapshot(time_index[idx], telemetry, kp, ki, kd, ta_array[idx])
+    _install_proactive_tool_context(time_index, ta_array, idx)
+
+    supervisor_input = ProactiveSupervisorInput(
+        room=room,
+        city=city,
+        user_id=user_id,
+        user_objective=user_objective,
+        current_time=str(time_index[idx]),
+        telemetry_window=telemetry,
+        forecast_summary=forecast,
+        current_kp=kp,
+        current_ki=ki,
+        current_kd=kd,
+    )
+
+    try:
+        decision = decide_proactive_pid(
+            supervisor_input,
+            client=supervisor_client,
+            model=llm_model,
+        )
+        if decision.mode == "hold":
+            return float(kp), float(ki), float(kd), "hold", "hold", decision.source, decision.rationale
+
+        kp_new = clip_with_step(kp, kp if decision.kp is None else decision.kp, KP_MIN, KP_MAX, MAX_KP_STEP)
+        ki_new = clip_with_step(ki, ki if decision.ki is None else decision.ki, KI_MIN, KI_MAX, MAX_KI_STEP)
+        kd_new = clip_with_step(kd, kd if decision.kd is None else decision.kd, KD_MIN, KD_MAX, MAX_KD_STEP)
+        return float(kp_new), float(ki_new), float(kd_new), decision.mode, decision.action, decision.source, decision.rationale
+    except Exception as exc:
+        if not allow_fallback:
+            raise
+
+        kp_prop, ki_prop, kd_prop, proactive_action, proactive_reason = proactive_pid_supervisor(
+            telemetry=telemetry,
+            forecast=forecast,
+            kp=kp,
+            ki=ki,
+            kd=kd,
+        )
+
+        decision_mode = "proactive"
+        action = proactive_action
+        rationale = proactive_reason
+
+        if proactive_action == "hold":
+            kp_prop, ki_prop, kd_prop, reactive_action = reactive_pid_supervisor(
+                telemetry=telemetry,
+                kp=kp,
+                ki=ki,
+                kd=kd,
+            )
+            decision_mode = "reactive" if reactive_action != "hold" else "hold"
+            action = reactive_action
+            rationale = "no proactive trigger; fallback to reactive rule"
+
+        fallback_rationale = f"agent failed; fell back to rules ({type(exc).__name__}: {exc}); {rationale}"
+        return (
+            float(kp_prop),
+            float(ki_prop),
+            float(kd_prop),
+            decision_mode,
+            action,
+            "rules_fallback",
+            fallback_rationale,
+        )
+    finally:
+        clear_tool_overrides(TOOL_OVERRIDE_NAMES)
+
+
 def simulate_proactive_pid_supervision(
     time_index: pd.DatetimeIndex,
     ta_array: np.ndarray,
@@ -520,6 +731,13 @@ def simulate_proactive_pid_supervision(
     dt_seconds: float = DT_SECONDS,
     supervision_interval_min: int = SUPERVISION_INTERVAL_MIN,
     window_min: int = WINDOW_MIN,
+    supervisor_mode: str = "agent_auto",
+    user_objective: str = DEFAULT_USER_OBJECTIVE,
+    room: str = DEFAULT_ROOM,
+    city: str = DEFAULT_CITY,
+    user_id: str = DEFAULT_USER_ID,
+    llm_model: str = DEFAULT_MODEL,
+    supervisor_client=None,
 ) -> tuple[dict[str, np.ndarray], pd.DataFrame]:
     n = len(time_index)
     bldg = Building1R1C(ti=float(ti0), r=float(r), c=float(c))
@@ -561,28 +779,48 @@ def simulate_proactive_pid_supervision(
                 horizon_min=FORECAST_HORIZON_MIN,
             )
 
-            kp_prop, ki_prop, kd_prop, proactive_action, proactive_reason = proactive_pid_supervisor(
-                telemetry=telemetry,
-                forecast=forecast,
-                kp=kp,
-                ki=ki,
-                kd=kd,
-            )
-
-            decision_mode = "proactive"
-            action = proactive_action
-            reason = proactive_reason
-
-            if proactive_action == "hold":
-                kp_prop, ki_prop, kd_prop, reactive_action = reactive_pid_supervisor(
+            if supervisor_mode == "rules":
+                kp_prop, ki_prop, kd_prop, proactive_action, proactive_reason = proactive_pid_supervisor(
                     telemetry=telemetry,
+                    forecast=forecast,
                     kp=kp,
                     ki=ki,
                     kd=kd,
                 )
-                decision_mode = "reactive" if reactive_action != "hold" else "hold"
-                action = reactive_action
-                reason = "no proactive trigger; fallback to reactive rule"
+
+                decision_mode = "proactive"
+                action = proactive_action
+                reason = proactive_reason
+                decision_source = "rules"
+
+                if proactive_action == "hold":
+                    kp_prop, ki_prop, kd_prop, reactive_action = reactive_pid_supervisor(
+                        telemetry=telemetry,
+                        kp=kp,
+                        ki=ki,
+                        kd=kd,
+                    )
+                    decision_mode = "reactive" if reactive_action != "hold" else "hold"
+                    action = reactive_action
+                    reason = "no proactive trigger; fallback to reactive rule"
+            else:
+                kp_prop, ki_prop, kd_prop, decision_mode, action, decision_source, reason = _agent_proactive_pid_supervisor(
+                    time_index=time_index,
+                    idx=k,
+                    ta_array=ta_array,
+                    telemetry=telemetry,
+                    forecast=forecast,
+                    kp=kp,
+                    ki=ki,
+                    kd=kd,
+                    room=room,
+                    city=city,
+                    user_id=user_id,
+                    user_objective=user_objective,
+                    llm_model=llm_model,
+                    allow_fallback=(supervisor_mode == "agent_auto"),
+                    supervisor_client=supervisor_client,
+                )
 
             supervision_records.append({
                 "time": str(time_index[k]),
@@ -596,6 +834,7 @@ def simulate_proactive_pid_supervision(
                 "max_abs_error_C": telemetry["max_abs_error"],
                 "power_mean_W": telemetry["power_mean_W"],
                 "power_std_W": telemetry["power_std_W"],
+                "last_power_W": telemetry["last_power_W"],
                 "energy_kWh": telemetry["energy_kWh"],
                 "error_sign_changes": telemetry["error_sign_changes"],
                 "Ta_now_C": forecast["Ta_now_C"],
@@ -609,7 +848,9 @@ def simulate_proactive_pid_supervision(
                 "ki_before": ki,
                 "kd_before": kd,
                 "action": action,
+                "decision_source": decision_source,
                 "reason": reason,
+                "rationale": reason,
                 "kp_after": kp_prop,
                 "ki_after": ki_prop,
                 "kd_after": kd_prop,
@@ -883,7 +1124,30 @@ def save_power_plot(
     plt.close()
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the C3 proactive PID supervision demo.")
+    parser.add_argument("--supervisor-mode", choices=["rules", "agent_auto", "agent_only"], default="agent_auto")
+    parser.add_argument("--user-objective", default=DEFAULT_USER_OBJECTIVE)
+    parser.add_argument("--room", default=DEFAULT_ROOM)
+    parser.add_argument("--city", default=DEFAULT_CITY)
+    parser.add_argument("--user-id", default=DEFAULT_USER_ID)
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    effective_supervisor_mode = args.supervisor_mode
+    supervisor_client = None
+    if args.supervisor_mode in {"agent_auto", "agent_only"}:
+        if check_ollama_connection():
+            supervisor_client = create_ollama_client()
+        elif args.supervisor_mode == "agent_only":
+            raise RuntimeError("Ollama is unavailable, so agent_only mode cannot run.")
+        else:
+            effective_supervisor_mode = "rules"
+            print("Ollama unavailable; using rule-based fallback for all C3 supervision updates.")
+
     r_hat, c_hat = load_rc_params()
     _, day2 = load_hourly_temperature_days()
     kp0, ki0, kd0, pid_source = load_c0_pid_parameters()
@@ -904,6 +1168,13 @@ def main() -> None:
         kp0=kp0,
         ki0=ki0,
         kd0=kd0,
+        supervisor_mode=effective_supervisor_mode,
+        user_objective=args.user_objective,
+        room=args.room,
+        city=args.city,
+        user_id=args.user_id,
+        llm_model=args.model,
+        supervisor_client=supervisor_client,
     )
 
     metrics_day2 = compute_evaluation_metrics(
@@ -959,6 +1230,13 @@ def main() -> None:
         ),
         "initial_pid_source": pid_source,
         "initial_pid_used": {"KP": kp0, "KI": ki0, "KD": kd0},
+        "requested_supervisor_mode": args.supervisor_mode,
+        "effective_supervisor_mode": effective_supervisor_mode,
+        "room": args.room,
+        "city": args.city,
+        "user_id": args.user_id,
+        "user_objective": args.user_objective,
+        "llm_model": args.model if effective_supervisor_mode != "rules" else None,
         "supervision_interval_min": SUPERVISION_INTERVAL_MIN,
         "window_min": WINDOW_MIN,
         "forecast_horizon_min": FORECAST_HORIZON_MIN,
@@ -983,8 +1261,11 @@ def main() -> None:
         "instruction_log_file": str(OUTPUT_DIR / "c3_user_instruction_log.csv"),
         "supervision_log_file": str(OUTPUT_DIR / "c3_supervision_log.csv"),
         "num_supervision_updates": int(len(sup_log)),
+        "decision_source_counts": sup_log["decision_source"].value_counts().to_dict() if len(sup_log) and "decision_source" in sup_log.columns else {},
+        "decision_mode_counts": sup_log["decision_mode"].value_counts().to_dict() if len(sup_log) and "decision_mode" in sup_log.columns else {},
         "num_proactive_updates": int((sup_log["decision_mode"] == "proactive").sum()) if len(sup_log) else 0,
         "num_reactive_updates": int((sup_log["decision_mode"] == "reactive").sum()) if len(sup_log) else 0,
+        "num_hold_updates": int((sup_log["decision_mode"] == "hold").sum()) if len(sup_log) else 0,
         "day2_evaluation_metrics": metrics_day2,
     }
     (OUTPUT_DIR / "c3_run_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -996,6 +1277,7 @@ def main() -> None:
     if len(sup_log):
         print(f"Proactive updates: {(sup_log['decision_mode'] == 'proactive').sum()}")
         print(f"Reactive updates: {(sup_log['decision_mode'] == 'reactive').sum()}")
+        print(f"Hold updates: {(sup_log['decision_mode'] == 'hold').sum()}")
     print(f"Outputs saved in: {OUTPUT_DIR.resolve()}")
 
 

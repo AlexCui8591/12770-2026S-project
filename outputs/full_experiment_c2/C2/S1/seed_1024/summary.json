@@ -1,0 +1,39 @@
+{
+  "condition": "C2",
+  "scenario_id": "S1",
+  "scenario_name": "Steady-State Tracking",
+  "scenario_command": "Set the bedroom to 22\u00b0C.",
+  "seed": 1024,
+  "room": "bedroom",
+  "initial_pid": {
+    "KP": 1.0,
+    "KI": 2.5,
+    "KD": 0.0
+  },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "llm_model": "qwen2.5:7b",
+  "forced_rule_steps": [],
+  "num_supervision_updates": 23,
+  "decision_source_counts": {
+    "agent": 23
+  },
+  "decision_mode_counts": {},
+  "metrics": {
+    "MAD_C": 0.5073589486476522,
+    "CVR_fraction": 0.0,
+    "CE_kWh": 0.02015716198592271,
+    "EC_USD": 0.0024188594383107256,
+    "RT_s": 2640.0,
+    "ST_s": null,
+    "OC_count": null,
+    "MO_C": null
+  },
+  "scenario_notes": {
+    "scenario_name": "Steady-State Tracking",
+    "command": "Set the bedroom to 22\u00b0C.",
+    "duration_steps": 120,
+    "start_minute": 480,
+    "working_setpoint_scale": "demo_heating_scale_38_to_41C"
+  }
+}

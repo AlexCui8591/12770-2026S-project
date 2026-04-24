@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-04-23T21:54:18",
+  "output_root": "C:\\Users\\AlexCui8591\\Desktop\\12770\\project\\outputs\\full_experiment_c2",
+  "conditions": [
+    "C2"
+  ],
+  "scenarios": [
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6"
+  ],
+  "requested_runs_per_condition": 5,
+  "resolved_seeds": [
+    42,
+    123,
+    456,
+    789,
+    1024
+  ],
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "model": "qwen2.5:7b",
+  "run_manifest_file": "C:\\Users\\AlexCui8591\\Desktop\\12770\\project\\outputs\\full_experiment_c2\\run_manifest.csv",
+  "aggregate_metrics_file": "C:\\Users\\AlexCui8591\\Desktop\\12770\\project\\outputs\\full_experiment_c2\\aggregate_metrics.csv",
+  "num_completed_runs": 30
+}

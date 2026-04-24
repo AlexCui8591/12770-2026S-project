@@ -4,7 +4,9 @@ run_c2_reactive_pid_supervision.py
 
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,9 +14,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-RC_JSON = "config/rc_fit_results.json"
-TEMP_CSV = "data/synthetic_outdoor_temperature_two_days.csv"
-C0_SUMMARY_JSON = "outputs/c0_tuned_pid_outputs/c0_run_summary.json"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from agent.mock_pid import update_default_controller
+from agent.supervisor import (
+    DEFAULT_MODEL,
+    ReactiveSupervisorInput,
+    check_ollama_connection,
+    create_ollama_client,
+    decide_reactive_pid,
+)
+
+BASE_DIR = Path(__file__).resolve().parent
+
+RC_JSON = BASE_DIR / "config" / "rc_fit_results.json"
+TEMP_CSV = BASE_DIR / "data" / "synthetic_outdoor_temperature_two_days.csv"
+C0_SUMMARY_JSON = BASE_DIR / "outputs" / "c0_tuned_pid_outputs" / "c0_run_summary.json"
 
 C0_KP = None
 C0_KI = None
@@ -48,8 +65,11 @@ TARIFF_OFFPEAK = 0.12
 TARIFF_ONPEAK = 0.20
 ONPEAK_HOURS = set(range(16, 21))
 
-OUTPUT_DIR = Path("outputs/c2_reactive_pid_outputs")
+OUTPUT_DIR = BASE_DIR / "outputs" / "c2_reactive_pid_outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+DEFAULT_USER_OBJECTIVE = "Keep the bedroom comfortable while saving energy when possible."
+DEFAULT_ROOM = "bedroom"
 
 def build_instruction_log() -> pd.DataFrame:
     records = [
@@ -166,13 +186,13 @@ def summarize_window(time_index: pd.DatetimeIndex, ti_hist: np.ndarray, tsp_hist
     p_w = phea_hist[start_idx:end_idx]
     e_w = err_hist[start_idx:end_idx]
     if len(e_w) == 0:
-        return {"window_start": "", "window_end": "", "mean_abs_error": 0.0, "mean_error": 0.0, "max_abs_error": 0.0, "power_mean_W": 0.0, "power_std_W": 0.0, "energy_kWh": 0.0, "error_sign_changes": 0, "last_error": 0.0, "current_ti": 0.0, "current_tsp": 0.0}
+        return {"window_start": "", "window_end": "", "mean_abs_error": 0.0, "mean_error": 0.0, "max_abs_error": 0.0, "power_mean_W": 0.0, "power_std_W": 0.0, "last_power_W": 0.0, "energy_kWh": 0.0, "error_sign_changes": 0, "last_error": 0.0, "current_ti": 0.0, "current_tsp": 0.0}
     signs = np.sign(e_w)
     nonzero = [int(s) for s in signs if s != 0]
     sign_changes = sum(1 for i in range(1, len(nonzero)) if nonzero[i] != nonzero[i - 1])
     dt_hours = dt_seconds / 3600.0
     energy_kwh = float(np.sum(p_w * dt_hours) / 1000.0)
-    return {"window_start": str(time_index[start_idx]), "window_end": str(time_index[end_idx - 1]), "mean_abs_error": float(np.mean(np.abs(e_w))), "mean_error": float(np.mean(e_w)), "max_abs_error": float(np.max(np.abs(e_w))), "power_mean_W": float(np.mean(p_w)), "power_std_W": float(np.std(p_w)), "energy_kWh": energy_kwh, "error_sign_changes": int(sign_changes), "last_error": float(e_w[-1]), "current_ti": float(ti_w[-1]), "current_tsp": float(tsp_w[-1])}
+    return {"window_start": str(time_index[start_idx]), "window_end": str(time_index[end_idx - 1]), "mean_abs_error": float(np.mean(np.abs(e_w))), "mean_error": float(np.mean(e_w)), "max_abs_error": float(np.max(np.abs(e_w))), "power_mean_W": float(np.mean(p_w)), "power_std_W": float(np.std(p_w)), "last_power_W": float(p_w[-1]), "energy_kWh": energy_kwh, "error_sign_changes": int(sign_changes), "last_error": float(e_w[-1]), "current_ti": float(ti_w[-1]), "current_tsp": float(tsp_w[-1])}
 
 def reactive_pid_supervisor(telemetry: dict[str, float | int | str], kp: float, ki: float, kd: float) -> tuple[float, float, float, str]:
     mean_abs_error = float(telemetry["mean_abs_error"])
@@ -200,7 +220,75 @@ def reactive_pid_supervisor(telemetry: dict[str, float | int | str], kp: float, 
         action = "raise_ki_for_small_persistent_error"
     return float(new_kp), float(new_ki), float(new_kd), action
 
-def simulate_reactive_pid_supervision(time_index: pd.DatetimeIndex, ta_array: np.ndarray, tsp_array: np.ndarray, r: float, c: float, ti0: float, kp0: float, ki0: float, kd0: float, pmax: float = PMAX, deadband: float = DEADBAND, dt_seconds: float = DT_SECONDS, supervision_interval_min: int = SUPERVISION_INTERVAL_MIN, window_min: int = WINDOW_MIN) -> tuple[dict[str, np.ndarray], pd.DataFrame]:
+
+def _sync_agent_pid_snapshot(
+    ts: pd.Timestamp,
+    telemetry: dict[str, float | int | str],
+    kp: float,
+    ki: float,
+    kd: float,
+    ta_now: float,
+) -> None:
+    cost_proxy = float(telemetry["mean_abs_error"]) ** 2 + float(telemetry["energy_kWh"]) * 10.0
+    update_default_controller(
+        kp=kp,
+        ki=ki,
+        kd=kd,
+        setpoint=float(telemetry["current_tsp"]),
+        indoor_temp=float(telemetry["current_ti"]),
+        tracking_error=float(telemetry["last_error"]),
+        control_signal=float(telemetry["last_power_W"]),
+        cumulative_energy_kwh=float(telemetry["energy_kWh"]),
+        oscillation_count=int(telemetry["error_sign_changes"]),
+        cost_J=cost_proxy,
+        outdoor_temp=float(ta_now),
+        timestamp=ts.to_pydatetime(),
+    )
+
+
+def _agent_reactive_pid_supervisor(
+    time_index: pd.DatetimeIndex,
+    idx: int,
+    ta_array: np.ndarray,
+    telemetry: dict[str, float | int | str],
+    kp: float,
+    ki: float,
+    kd: float,
+    *,
+    room: str,
+    user_objective: str,
+    llm_model: str,
+    allow_fallback: bool,
+    supervisor_client=None,
+) -> tuple[float, float, float, str, str, str]:
+    _sync_agent_pid_snapshot(time_index[idx], telemetry, kp, ki, kd, ta_array[idx])
+    supervisor_input = ReactiveSupervisorInput(
+        room=room,
+        user_objective=user_objective,
+        current_time=str(time_index[idx]),
+        telemetry_window=telemetry,
+        current_kp=kp,
+        current_ki=ki,
+        current_kd=kd,
+    )
+    try:
+        decision = decide_reactive_pid(supervisor_input, client=supervisor_client, model=llm_model)
+        if decision.action == "hold":
+            return float(kp), float(ki), float(kd), "hold", decision.source, decision.rationale
+
+        kp_new = clip_with_step(kp, kp if decision.kp is None else decision.kp, KP_MIN, KP_MAX, MAX_KP_STEP)
+        ki_new = clip_with_step(ki, ki if decision.ki is None else decision.ki, KI_MIN, KI_MAX, MAX_KI_STEP)
+        kd_new = clip_with_step(kd, kd if decision.kd is None else decision.kd, KD_MIN, KD_MAX, MAX_KD_STEP)
+        return float(kp_new), float(ki_new), float(kd_new), "set_pid", decision.source, decision.rationale
+    except Exception as exc:
+        if not allow_fallback:
+            raise
+        kp_new, ki_new, kd_new, action = reactive_pid_supervisor(telemetry, kp, ki, kd)
+        rationale = f"agent failed; fell back to rules ({type(exc).__name__}: {exc})"
+        return float(kp_new), float(ki_new), float(kd_new), action, "rules_fallback", rationale
+
+
+def simulate_reactive_pid_supervision(time_index: pd.DatetimeIndex, ta_array: np.ndarray, tsp_array: np.ndarray, r: float, c: float, ti0: float, kp0: float, ki0: float, kd0: float, pmax: float = PMAX, deadband: float = DEADBAND, dt_seconds: float = DT_SECONDS, supervision_interval_min: int = SUPERVISION_INTERVAL_MIN, window_min: int = WINDOW_MIN, supervisor_mode: str = "agent_auto", user_objective: str = DEFAULT_USER_OBJECTIVE, room: str = DEFAULT_ROOM, llm_model: str = DEFAULT_MODEL, supervisor_client=None, forced_rule_steps: set[int] | None = None) -> tuple[dict[str, np.ndarray], pd.DataFrame]:
     n = len(time_index)
     bldg = Building1R1C(ti=float(ti0), r=float(r), c=float(c))
     ti_hist = np.zeros(n, dtype=float)
@@ -221,8 +309,30 @@ def simulate_reactive_pid_supervision(time_index: pd.DatetimeIndex, ta_array: np
         if k > 0 and k % sup_every == 0:
             start_idx = max(0, k - window_steps)
             telemetry = summarize_window(time_index, ti_hist, tsp_array, phea_hist, err_hist, start_idx, k, dt_seconds)
-            kp_new, ki_new, kd_new, action = reactive_pid_supervisor(telemetry, kp, ki, kd)
-            supervision_records.append({"time": str(time_index[k]), "window_start": telemetry["window_start"], "window_end": telemetry["window_end"], "current_ti_C": telemetry["current_ti"], "current_tsp_C": telemetry["current_tsp"], "mean_abs_error_C": telemetry["mean_abs_error"], "mean_error_C": telemetry["mean_error"], "max_abs_error_C": telemetry["max_abs_error"], "power_mean_W": telemetry["power_mean_W"], "power_std_W": telemetry["power_std_W"], "energy_kWh": telemetry["energy_kWh"], "error_sign_changes": telemetry["error_sign_changes"], "kp_before": kp, "ki_before": ki, "kd_before": kd, "action": action, "kp_after": kp_new, "ki_after": ki_new, "kd_after": kd_new})
+            if forced_rule_steps is not None and k in forced_rule_steps:
+                kp_new, ki_new, kd_new, action = reactive_pid_supervisor(telemetry, kp, ki, kd)
+                decision_source = "injected_rule_failure"
+                rationale = "supervisor failure injected; using rule-based fallback"
+            elif supervisor_mode == "rules":
+                kp_new, ki_new, kd_new, action = reactive_pid_supervisor(telemetry, kp, ki, kd)
+                decision_source = "rules"
+                rationale = "rule-based reactive supervisor"
+            else:
+                kp_new, ki_new, kd_new, action, decision_source, rationale = _agent_reactive_pid_supervisor(
+                    time_index,
+                    k,
+                    ta_array,
+                    telemetry,
+                    kp,
+                    ki,
+                    kd,
+                    room=room,
+                    user_objective=user_objective,
+                    llm_model=llm_model,
+                    allow_fallback=(supervisor_mode == "agent_auto"),
+                    supervisor_client=supervisor_client,
+                )
+            supervision_records.append({"time": str(time_index[k]), "window_start": telemetry["window_start"], "window_end": telemetry["window_end"], "current_ti_C": telemetry["current_ti"], "current_tsp_C": telemetry["current_tsp"], "mean_abs_error_C": telemetry["mean_abs_error"], "mean_error_C": telemetry["mean_error"], "max_abs_error_C": telemetry["max_abs_error"], "power_mean_W": telemetry["power_mean_W"], "power_std_W": telemetry["power_std_W"], "last_power_W": telemetry["last_power_W"], "energy_kWh": telemetry["energy_kWh"], "error_sign_changes": telemetry["error_sign_changes"], "kp_before": kp, "ki_before": ki, "kd_before": kd, "action": action, "decision_source": decision_source, "rationale": rationale, "kp_after": kp_new, "ki_after": ki_new, "kd_after": kd_new})
             kp, ki, kd = kp_new, ki_new, kd_new
         ti_k = bldg.get_state()
         tsp_k = float(tsp_array[k])
@@ -408,7 +518,27 @@ def save_power_plot(output_path: Path, phea_array: np.ndarray, title: str) -> No
     plt.savefig(output_path, dpi=200)
     plt.close()
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the C2 reactive PID supervision demo.")
+    parser.add_argument("--supervisor-mode", choices=["rules", "agent_auto", "agent_only"], default="agent_auto")
+    parser.add_argument("--user-objective", default=DEFAULT_USER_OBJECTIVE)
+    parser.add_argument("--room", default=DEFAULT_ROOM)
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    effective_supervisor_mode = args.supervisor_mode
+    supervisor_client = None
+    if args.supervisor_mode in {"agent_auto", "agent_only"}:
+        if check_ollama_connection():
+            supervisor_client = create_ollama_client()
+        elif args.supervisor_mode == "agent_only":
+            raise RuntimeError("Ollama is unavailable, so agent_only mode cannot run.")
+        else:
+            effective_supervisor_mode = "rules"
+            print("Ollama unavailable; using rule-based fallback for all C2 supervision updates.")
     r_hat, c_hat = load_rc_params()
     _, day2 = load_hourly_temperature_days()
     kp0, ki0, kd0, pid_source = load_c0_pid_parameters()
@@ -417,7 +547,7 @@ def main() -> None:
     time_day2 = build_minute_time_index("day_2")
     tsp_day2 = build_setpoint_schedule(time_day2)
     ti0_day2 = float(ta_day2[0])
-    sim_day2, sup_log = simulate_reactive_pid_supervision(time_index=time_day2, ta_array=ta_day2, tsp_array=tsp_day2, r=r_hat, c=c_hat, ti0=ti0_day2, kp0=kp0, ki0=ki0, kd0=kd0)
+    sim_day2, sup_log = simulate_reactive_pid_supervision(time_index=time_day2, ta_array=ta_day2, tsp_array=tsp_day2, r=r_hat, c=c_hat, ti0=ti0_day2, kp0=kp0, ki0=ki0, kd0=kd0, supervisor_mode=effective_supervisor_mode, user_objective=args.user_objective, room=args.room, llm_model=args.model, supervisor_client=supervisor_client)
     metrics_day2 = compute_evaluation_metrics(time_index=time_day2, ti=sim_day2["Ti"], tsp=tsp_day2, phea_w=sim_day2["Phea"])
     tariff_day2 = build_tariff_schedule(time_day2)
     day2_out = pd.DataFrame({"time": time_day2, "Ta_C": ta_day2, "Tsp_C": tsp_day2, "Ti_C": sim_day2["Ti"], "Phea_W": sim_day2["Phea"], "tariff_USD_per_kWh": tariff_day2, "error_C": sim_day2["err"], "integral_term": sim_day2["int"], "derivative_term": sim_day2["der"], "Kp": sim_day2["Kp"], "Ki": sim_day2["Ki"], "Kd": sim_day2["Kd"]})
@@ -427,7 +557,8 @@ def main() -> None:
     save_temperature_plot(OUTPUT_DIR / "c2_day2_temperature_plot.png", ta_day2, tsp_day2, sim_day2["Ti"], "C2 reactive PID supervision temperature response on Day 2")
     save_power_plot(OUTPUT_DIR / "c2_day2_power_plot.png", sim_day2["Phea"], "C2 reactive PID supervision heater power on Day 2")
     (OUTPUT_DIR / "c2_day2_metrics.json").write_text(json.dumps(metrics_day2, indent=2), encoding="utf-8")
-    summary = {"method": "C2 reactive PID supervision with fixed setpoint schedule", "initial_pid_source": pid_source, "initial_pid_used": {"KP": kp0, "KI": ki0, "KD": kd0}, "supervision_interval_min": SUPERVISION_INTERVAL_MIN, "window_min": WINDOW_MIN, "setpoint_adjustment_online": False, "cost_weight_adjustment_online": False, "setpoint_schedule": {"00:00-02:00": SP_DEFAULT_NIGHT, "02:00-03:00": SP_EVENT_02, "03:00-09:00": SP_DEFAULT_NIGHT, "09:00-18:00": SP_DAY, "18:00-19:00": SP_EVENT_18, "19:00-22:00": SP_EVENING, "22:00-24:00": SP_DEFAULT_NIGHT}, "instruction_log_file": str(OUTPUT_DIR / "c2_user_instruction_log.csv"), "supervision_log_file": str(OUTPUT_DIR / "c2_supervision_log.csv"), "num_supervision_updates": int(len(sup_log)), "day2_evaluation_metrics": metrics_day2}
+    decision_source_counts = sup_log["decision_source"].value_counts().to_dict() if not sup_log.empty and "decision_source" in sup_log.columns else {}
+    summary = {"method": "C2 reactive PID supervision with fixed setpoint schedule", "initial_pid_source": pid_source, "initial_pid_used": {"KP": kp0, "KI": ki0, "KD": kd0}, "requested_supervisor_mode": args.supervisor_mode, "effective_supervisor_mode": effective_supervisor_mode, "room": args.room, "user_objective": args.user_objective, "llm_model": args.model if effective_supervisor_mode != "rules" else None, "supervision_interval_min": SUPERVISION_INTERVAL_MIN, "window_min": WINDOW_MIN, "setpoint_adjustment_online": False, "cost_weight_adjustment_online": False, "setpoint_schedule": {"00:00-02:00": SP_DEFAULT_NIGHT, "02:00-03:00": SP_EVENT_02, "03:00-09:00": SP_DEFAULT_NIGHT, "09:00-18:00": SP_DAY, "18:00-19:00": SP_EVENT_18, "19:00-22:00": SP_EVENING, "22:00-24:00": SP_DEFAULT_NIGHT}, "instruction_log_file": str(OUTPUT_DIR / "c2_user_instruction_log.csv"), "supervision_log_file": str(OUTPUT_DIR / "c2_supervision_log.csv"), "num_supervision_updates": int(len(sup_log)), "decision_source_counts": decision_source_counts, "day2_evaluation_metrics": metrics_day2}
     (OUTPUT_DIR / "c2_run_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print("C2 saved.")
 

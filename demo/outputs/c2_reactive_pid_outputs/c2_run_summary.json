@@ -1,11 +1,16 @@
 {
   "method": "C2 reactive PID supervision with fixed setpoint schedule",
-  "initial_pid_source": "loaded from outputs/c0_tuned_pid_outputs/c0_run_summary.json",
+  "initial_pid_source": "loaded from C:/Users/AlexCui8591/Desktop/12770/project/demo/outputs/c0_tuned_pid_outputs/c0_run_summary.json",
   "initial_pid_used": {
     "KP": 1.0,
     "KI": 3.0,
     "KD": 0.0
   },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "rules",
+  "room": "bedroom",
+  "user_objective": "Keep the bedroom comfortable while saving energy when possible.",
+  "llm_model": null,
   "supervision_interval_min": 5,
   "window_min": 5,
   "setpoint_adjustment_online": false,
@@ -19,9 +24,12 @@
     "19:00-22:00": 40.0,
     "22:00-24:00": 39.0
   },
-  "instruction_log_file": "outputs\\c2_reactive_pid_outputs\\c2_user_instruction_log.csv",
-  "supervision_log_file": "outputs\\c2_reactive_pid_outputs\\c2_supervision_log.csv",
+  "instruction_log_file": "C:\\Users\\AlexCui8591\\Desktop\\12770\\project\\demo\\outputs\\c2_reactive_pid_outputs\\c2_user_instruction_log.csv",
+  "supervision_log_file": "C:\\Users\\AlexCui8591\\Desktop\\12770\\project\\demo\\outputs\\c2_reactive_pid_outputs\\c2_supervision_log.csv",
   "num_supervision_updates": 287,
+  "decision_source_counts": {
+    "rules": 287
+  },
   "day2_evaluation_metrics": {
     "MAD_C": 0.19691667008482477,
     "CVR_fraction": 0.005797101449275362,

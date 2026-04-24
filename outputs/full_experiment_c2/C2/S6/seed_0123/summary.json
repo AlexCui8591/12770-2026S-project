@@ -1,0 +1,58 @@
+{
+  "condition": "C2",
+  "scenario_id": "S6",
+  "scenario_name": "LLM Failure Resilience",
+  "scenario_command": "Keep the room at 21\u00b0C.",
+  "seed": 123,
+  "room": "bedroom",
+  "initial_pid": {
+    "KP": 1.0,
+    "KI": 2.5,
+    "KD": 0.0
+  },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "llm_model": "qwen2.5:7b",
+  "forced_rule_steps": [
+    10,
+    50,
+    105,
+    160,
+    170,
+    175,
+    200
+  ],
+  "num_supervision_updates": 47,
+  "decision_source_counts": {
+    "agent": 40,
+    "injected_rule_failure": 7
+  },
+  "decision_mode_counts": {},
+  "metrics": {
+    "MAD_C": 0.4671131146167814,
+    "CVR_fraction": 0.0,
+    "CE_kWh": 0.03225652677495256,
+    "EC_USD": 0.0038707832129943076,
+    "RT_s": 2280.0,
+    "ST_s": 6840.0,
+    "OC_count": 0,
+    "MO_C": null
+  },
+  "scenario_notes": {
+    "scenario_name": "LLM Failure Resilience",
+    "command": "Keep the room at 21\u00b0C.",
+    "duration_steps": 240,
+    "start_minute": 480,
+    "working_setpoint_scale": "demo_heating_scale_38_to_41C",
+    "failure_injection_steps": [
+      10,
+      50,
+      105,
+      160,
+      170,
+      175,
+      200
+    ],
+    "failure_injection_count": 7
+  }
+}

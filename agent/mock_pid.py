@@ -183,6 +183,50 @@ class MockPIDController:
 DEFAULT_CONTROLLER = MockPIDController()
 
 
+def update_default_controller(
+    *,
+    kp: float | None = None,
+    ki: float | None = None,
+    kd: float | None = None,
+    setpoint: float | None = None,
+    indoor_temp: float | None = None,
+    tracking_error: float | None = None,
+    control_signal: float | None = None,
+    cumulative_energy_kwh: float | None = None,
+    oscillation_count: int | None = None,
+    cost_J: float | None = None,
+    outdoor_temp: float | None = None,
+    timestamp: datetime | None = None,
+) -> MockPIDController:
+    """Mutate the module singleton so tool reads reflect an external simulator."""
+    if kp is not None:
+        DEFAULT_CONTROLLER.kp = float(kp)
+    if ki is not None:
+        DEFAULT_CONTROLLER.ki = float(ki)
+    if kd is not None:
+        DEFAULT_CONTROLLER.kd = float(kd)
+    if setpoint is not None:
+        DEFAULT_CONTROLLER.setpoint = float(setpoint)
+    if indoor_temp is not None:
+        DEFAULT_CONTROLLER.indoor_temp = float(indoor_temp)
+    if tracking_error is not None:
+        DEFAULT_CONTROLLER.tracking_error = float(tracking_error)
+    if control_signal is not None:
+        DEFAULT_CONTROLLER.control_signal = float(control_signal)
+    if cumulative_energy_kwh is not None:
+        DEFAULT_CONTROLLER.cumulative_energy_kwh = float(cumulative_energy_kwh)
+    if oscillation_count is not None:
+        DEFAULT_CONTROLLER.oscillation_count = int(oscillation_count)
+    if cost_J is not None:
+        DEFAULT_CONTROLLER.cost_J = float(cost_J)
+    if outdoor_temp is not None:
+        DEFAULT_CONTROLLER.outdoor_temp = float(outdoor_temp)
+    if timestamp is not None:
+        DEFAULT_CONTROLLER._start_time = timestamp
+        DEFAULT_CONTROLLER._step_count = 0
+    return DEFAULT_CONTROLLER
+
+
 # -- Scenario factories (for tests) ------------------------------------------
 def scenario_steady_state() -> MockPIDController:
     """S1-like: temp near setpoint, small error, nothing to do."""

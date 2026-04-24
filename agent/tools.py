@@ -28,6 +28,7 @@ DEFAULT_SOLAR_LONGITUDE = -79.9959
 DEFAULT_SOLAR_TIMEZONE = "America/New_York"
 SOLAR_PAST_DAYS = 7
 SOLAR_FORECAST_DAYS = 16
+TOOL_OVERRIDE_REGISTRY: dict[str, Callable[..., dict] | None] = {}
 
 
 def _load_yaml(path: Path) -> dict:
@@ -64,6 +65,23 @@ def _get_ha_connection() -> tuple[str, str]:
     ha_url = os.environ.get("HA_URL", db_url)
     ha_token = os.environ.get("HA_TOKEN", db_token)
     return ha_url.rstrip("/"), ha_token
+
+
+def set_tool_override(name: str, func: Callable[..., dict] | None) -> None:
+    """Install or clear a temporary override for one tool."""
+    if func is None:
+        TOOL_OVERRIDE_REGISTRY.pop(name, None)
+        return
+    TOOL_OVERRIDE_REGISTRY[name] = func
+
+
+def clear_tool_overrides(names: list[str] | None = None) -> None:
+    """Clear temporary tool overrides."""
+    if names is None:
+        TOOL_OVERRIDE_REGISTRY.clear()
+        return
+    for name in names:
+        TOOL_OVERRIDE_REGISTRY.pop(name, None)
 
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -770,6 +788,14 @@ TOOL_REGISTRY: dict[str, Callable[..., dict]] = {
 
 def dispatch_tool_call(name: str, arguments: dict) -> dict | None:
     """Dispatch a tool call and return None on handled failure."""
+    override = TOOL_OVERRIDE_REGISTRY.get(name)
+    if override is not None:
+        try:
+            return override(**arguments)
+        except Exception:
+            logger.exception("Tool override failed: %s(%s)", name, arguments)
+            return None
+
     func = TOOL_REGISTRY.get(name)
     if func is None:
         logger.warning("Unknown tool: %s", name)

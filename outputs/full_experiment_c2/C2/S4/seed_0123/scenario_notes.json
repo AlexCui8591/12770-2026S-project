@@ -1,0 +1,7 @@
+{
+  "scenario_name": "Occupancy Adaptation",
+  "command": "Guests coming at 6 PM, make it comfortable.",
+  "duration_steps": 360,
+  "start_minute": 900,
+  "working_setpoint_scale": "demo_heating_scale_38_to_41C"
+}

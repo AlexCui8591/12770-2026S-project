@@ -1,0 +1,39 @@
+{
+  "condition": "C2",
+  "scenario_id": "S4",
+  "scenario_name": "Occupancy Adaptation",
+  "scenario_command": "Guests coming at 6 PM, make it comfortable.",
+  "seed": 123,
+  "room": "bedroom",
+  "initial_pid": {
+    "KP": 1.0,
+    "KI": 2.5,
+    "KD": 0.0
+  },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "llm_model": "qwen2.5:7b",
+  "forced_rule_steps": [],
+  "num_supervision_updates": 71,
+  "decision_source_counts": {
+    "agent": 71
+  },
+  "decision_mode_counts": {},
+  "metrics": {
+    "MAD_C": 0.4237847893406228,
+    "CVR_fraction": 0.05,
+    "CE_kWh": 0.04552050579736271,
+    "EC_USD": 0.008303368381750744,
+    "RT_s": 1740.0,
+    "ST_s": 6180.0,
+    "OC_count": 1,
+    "MO_C": 3.1680979922649968
+  },
+  "scenario_notes": {
+    "scenario_name": "Occupancy Adaptation",
+    "command": "Guests coming at 6 PM, make it comfortable.",
+    "duration_steps": 360,
+    "start_minute": 900,
+    "working_setpoint_scale": "demo_heating_scale_38_to_41C"
+  }
+}

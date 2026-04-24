@@ -1,0 +1,40 @@
+{
+  "condition": "C2",
+  "scenario_id": "S3",
+  "scenario_name": "Cost Optimization",
+  "scenario_command": "Keep it warm but minimize electricity costs.",
+  "seed": 789,
+  "room": "bedroom",
+  "initial_pid": {
+    "KP": 1.0,
+    "KI": 2.5,
+    "KD": 0.0
+  },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "llm_model": "qwen2.5:7b",
+  "forced_rule_steps": [],
+  "num_supervision_updates": 143,
+  "decision_source_counts": {
+    "agent": 143
+  },
+  "decision_mode_counts": {},
+  "metrics": {
+    "MAD_C": 0.21456305048574428,
+    "CVR_fraction": 0.0,
+    "CE_kWh": 0.08213207744844447,
+    "EC_USD": 0.020267861858439037,
+    "RT_s": 2580.0,
+    "ST_s": 3240.0,
+    "OC_count": 1,
+    "MO_C": 1.194330340901523
+  },
+  "scenario_notes": {
+    "scenario_name": "Cost Optimization",
+    "command": "Keep it warm but minimize electricity costs.",
+    "duration_steps": 720,
+    "start_minute": 540,
+    "working_setpoint_scale": "demo_heating_scale_38_to_41C",
+    "tariff_modifier": "Applied 3x tariff spike in the middle third of the run."
+  }
+}

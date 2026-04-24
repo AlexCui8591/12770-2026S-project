@@ -1,0 +1,8 @@
+{
+  "scenario_name": "Weather Disturbance",
+  "command": "Keep the room comfortable.",
+  "duration_steps": 180,
+  "start_minute": 360,
+  "working_setpoint_scale": "demo_heating_scale_38_to_41C",
+  "weather_disturbance": "Applied 10C step drop from minute 30 onward."
+}
