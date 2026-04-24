@@ -1,0 +1,8 @@
+{
+  "scenario_name": "Cost Optimization",
+  "command": "Keep it warm but minimize electricity costs.",
+  "duration_steps": 720,
+  "start_minute": 540,
+  "working_setpoint_scale": "demo_heating_scale_38_to_41C",
+  "tariff_modifier": "Applied 3x tariff spike in the middle third of the run."
+}

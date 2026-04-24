@@ -66,17 +66,18 @@ C2 therefore represents **reactive closed-loop PID supervision**, where the cont
 
 ## 7. C3: Proactive Online PID Supervision
 
-**C3** builds on C2 by adding **proactive PID gain adjustment**.
+**C3** builds on C2 by adding a **full-action proactive supervisor**.
 
-C3 keeps the same setpoint schedule as C1 and C2 and still does not adjust setpoints online. However, every 5 minutes it uses not only recent telemetry, but also **future context**, including:
+C3 starts from the same setpoint schedule as C1 and C2, but it can adjust the online setpoint around that baseline. Every 5 minutes it uses recent telemetry plus **future context**, including:
 
 - the next **1 hour** of generated outdoor temperature data
+- the upcoming synthetic electricity tariff window
 - user habit signals such as:
-  - nighttime cooler preference
-  - evening higher-temperature demand
-  - sleep-time stability preference
+- nighttime cooler preference
+- evening higher-temperature demand
+- sleep-time stability preference
 
-A proactive adjustment is triggered when the predicted outdoor temperature change over the next hour exceeds **0.5°C**, or when an upcoming user habit event is close enough to justify early controller preparation. This allows the controller to tune PID gains **before** a disturbance or demand shift occurs, rather than only after error has already appeared. 
+A proactive adjustment may change PID gains, online setpoint, and/or cost weights before a disturbance, tariff change, or demand shift occurs, rather than only after error has already appeared.
 
 ## 8. Unified Evaluation Metrics
 

@@ -315,19 +315,19 @@ Metrics:
 
 ### 4.1 Goal
 
-C3 extends C2 by giving the agent forward-looking context. The goal is to test whether the LLM can tune PID gains before expected disturbances or user comfort events occur.
+C3 extends C2 by giving the agent forward-looking context and a larger action space. The goal is to test whether the LLM can adjust PID gains, online setpoint, and online cost weights before expected disturbances, tariff changes, or user comfort events occur.
 
-C3 still only controls PID gains:
+C3 controls:
 
 ```text
 Kp, Ki, Kd
+online setpoint
+online cost weights
 ```
 
 C3 still does not change:
 
 ```text
-setpoint
-cost weights
 thermal model
 tariff data
 ```
@@ -346,10 +346,16 @@ C3 prompt constrains the model to:
 ```json
 {
   "mode": "hold | proactive | reactive",
-  "action": "hold | set_pid",
+  "action": "hold | set_pid | set_setpoint | set_cost_weights | multi_action",
   "kp": "number | null",
   "ki": "number | null",
   "kd": "number | null",
+  "setpoint_C": "number | null",
+  "cost_weights": {
+    "comfort": "number",
+    "energy": "number",
+    "response": "number"
+  } | null,
   "rationale": "short explanation"
 }
 ```
@@ -358,19 +364,20 @@ The extra `mode` field is important:
 
 | Mode | Meaning |
 |---|---|
-| hold | No gain change |
-| proactive | Gain change based on future context |
-| reactive | Gain change based on recent telemetry |
+| hold | No control update |
+| proactive | PID, setpoint, or cost-weight update based on future context |
+| reactive | PID, setpoint, or cost-weight update based on recent telemetry |
 
 Allowed tools:
 
 ```text
 get_pid_telemetry(room)
 get_weather_forecast(city, hours_ahead)
+get_tariff_schedule(time, hours_ahead)
 get_schedule(user_id, date)
 ```
 
-Compared with C2, C3 can inspect future weather and upcoming schedule events.
+Compared with C2, C3 can inspect future weather, upcoming tariff windows, and upcoming schedule events.
 
 ### 4.3 Proactive data context
 
@@ -392,6 +399,7 @@ Second, the agent tool layer receives temporary synthetic overrides:
 
 ```text
 get_weather_forecast -> scenario future outdoor temperature
+get_tariff_schedule -> scenario synthetic TOU tariff window
 get_schedule -> synthetic upcoming habit events
 ```
 
@@ -410,15 +418,15 @@ for each simulation minute:
     install synthetic tool overrides for forecast and schedule
     call C3 proactive supervisor agent
     validate JSON decision
-    clip gain changes
+    clip gain, setpoint, and cost-weight changes
     clear tool overrides
-    write new Kp/Ki/Kd into PID loop
+    write new Kp/Ki/Kd, runtime setpoint, and runtime cost weights into PID loop
 
   run one PID step
   update building temperature
 ```
 
-The gain bounds and max-step limits are the same as C2.
+Gain changes use the same bounds as C2. Setpoint changes are clipped to the demo operating range and limited to small per-supervision steps. Cost weights are clipped, normalized, and recorded as a time-varying objective state.
 
 ### 4.5 C3 fallback behavior
 
@@ -429,10 +437,10 @@ When using rules, C3 first applies proactive rules:
 | Trigger | Rule behavior |
 |---|---|
 | Future outdoor cooling | Increase Kp/Ki to prepare heating response |
-| Future outdoor warming | Reduce Kp/Ki to avoid overshoot |
-| Warmer habit event | Increase Kp/Ki |
-| Stability habit event | Reduce Kp and increase Kd |
-| Cooler habit event | Reduce Kp/Ki |
+| Future outdoor warming | Reduce Kp/Ki, relax setpoint slightly, and increase energy weight |
+| Warmer habit event | Increase Kp/Ki, nudge setpoint upward, and increase comfort weight |
+| Stability habit event | Reduce Kp, increase Kd, and increase response weight |
+| Cooler habit event | Reduce Kp/Ki, nudge setpoint downward, and increase energy weight |
 
 If no proactive rule triggers, it falls back to the same reactive logic used by C2.
 
@@ -471,6 +479,10 @@ C3 `supervision_log.csv` adds proactive fields:
 | minutes_to_next_habit | Time to event |
 | decision_source | agent, rules, fallback |
 | rationale | Agent or fallback explanation |
+| setpoint_before_C / setpoint_after_C | Online setpoint change applied by C3 |
+| comfort_weight_before / after | Time-varying comfort objective weight |
+| energy_weight_before / after | Time-varying energy objective weight |
+| response_weight_before / after | Time-varying response objective weight |
 
 `summary.json` includes:
 
@@ -488,15 +500,15 @@ These fields are the main evidence for whether C3 is actually using proactive re
 
 | Dimension | C2 | C3 |
 |---|---|---|
-| Agent type | Reactive PID supervisor | Proactive + reactive PID supervisor |
+| Agent type | Reactive PID supervisor | Full-action proactive + reactive supervisor |
 | Main file | `agent/supervisor.py` | `agent/proactive_supervisor.py` |
 | Prompt | `agent/supervisor_prompt.txt` | `agent/proactive_supervisor_prompt.txt` |
-| Tools | `get_pid_telemetry` | `get_pid_telemetry`, `get_weather_forecast`, `get_schedule` |
-| Inputs | Recent 5-minute telemetry | Recent telemetry + future weather + schedule |
-| Output action | `hold` or `set_pid` | `hold` or `set_pid` |
+| Tools | `get_pid_telemetry` | `get_pid_telemetry`, `get_weather_forecast`, `get_tariff_schedule`, `get_schedule` |
+| Inputs | Recent 5-minute telemetry | Recent telemetry + future weather + tariff + schedule |
+| Output action | `hold` or `set_pid` | `hold`, `set_pid`, `set_setpoint`, `set_cost_weights`, or `multi_action` |
 | Output mode | None | `hold`, `reactive`, `proactive` |
-| Online setpoint change | No | No |
-| Online cost-weight change | No | No |
+| Online setpoint change | No | Yes |
+| Online cost-weight change | No | Yes |
 | Gain safety bounds | Yes | Yes |
 | Rule fallback | Yes | Yes |
 | S6 failure injection | Yes | Not currently used in runner summary as forced C3 fallback |
@@ -505,7 +517,7 @@ The main scientific comparison:
 
 ```text
 C2 tests whether recent telemetry alone is enough for useful online PID tuning.
-C3 tests whether adding forecast and schedule context improves anticipation and stability.
+C3 tests whether adding forecast, tariff, and schedule context improves anticipation, stability, and objective-aware control.
 ```
 
 ## 6. Interpretation Strategy
@@ -548,10 +560,10 @@ If C3 is too aggressive:
 
 1. The current plant model is simplified 1R1C and heating-only.
 2. The working temperature scale is the demo scale around 38-41C.
-3. C2 and C3 only tune PID gains; setpoint and cost weights stay fixed online.
+3. C2 only tunes PID gains; C3 tunes PID gains, online setpoint, and online cost weights.
 4. LLM outputs are constrained by JSON schema, then clipped by deterministic safety bounds.
 5. `agent_auto` can hide occasional LLM failures by falling back to rules; use `agent_only` when measuring pure agent reliability.
-6. C3 proactive quality depends heavily on whether the agent uses forecast/schedule context conservatively.
+6. C3 proactive quality depends heavily on whether the agent uses forecast/tariff/schedule context conservatively.
 
 ## 8. Recommended Reporting Language
 
@@ -561,9 +573,9 @@ C2 can be described as:
 
 C3 can be described as:
 
-> C3 extends C2 with proactive context. In addition to recent PID telemetry, the agent can inspect synthetic forecast and schedule tools derived from the current simulation scenario, allowing it to adjust PID gains ahead of expected disturbances or comfort events.
+> C3 extends C2 with proactive context and a full-action supervisor. In addition to recent PID telemetry, the agent can inspect synthetic forecast, tariff, and schedule tools derived from the current simulation scenario, allowing it to adjust PID gains, online setpoint, and online cost weights ahead of expected disturbances or comfort events.
 
 The clean experimental contrast is:
 
-> C2 measures reactive online gain tuning from telemetry alone, while C3 measures whether forecast-aware and schedule-aware supervision provides additional benefit over reactive tuning.
+> C2 measures reactive online gain tuning from telemetry alone, while C3 measures whether forecast-aware, tariff-aware, and schedule-aware full-action supervision provides additional benefit over reactive tuning.
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import inspect
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -262,7 +263,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "Read the current PID controller state for supervisory reasoning. "
                 "Returns gains (kp, ki, kd), setpoint, indoor_temp, tracking_error, "
                 "control_signal (W), cumulative_energy_kwh, oscillation_count, "
-                "cost_J (Milestone eq. 2), and timestamp. Use this to decide "
+                "cost_J (Milestone eq. 2), online cost_weights, and timestamp. Use this to decide "
                 "whether to HOLD, adjust gains, shift setpoint, or modify cost weights."
             ),
             "parameters": {
@@ -786,12 +787,30 @@ TOOL_REGISTRY: dict[str, Callable[..., dict]] = {
 }
 
 
+def _filter_tool_arguments(func: Callable[..., dict], arguments: dict) -> dict:
+    """Drop hallucinated extra tool arguments before calling a Python function."""
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return arguments
+
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+        return arguments
+
+    allowed = {
+        name
+        for name, param in signature.parameters.items()
+        if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+    }
+    return {key: value for key, value in arguments.items() if key in allowed}
+
+
 def dispatch_tool_call(name: str, arguments: dict) -> dict | None:
     """Dispatch a tool call and return None on handled failure."""
     override = TOOL_OVERRIDE_REGISTRY.get(name)
     if override is not None:
         try:
-            return override(**arguments)
+            return override(**_filter_tool_arguments(override, arguments))
         except Exception:
             logger.exception("Tool override failed: %s(%s)", name, arguments)
             return None
@@ -801,7 +820,7 @@ def dispatch_tool_call(name: str, arguments: dict) -> dict | None:
         logger.warning("Unknown tool: %s", name)
         return None
     try:
-        return func(**arguments)
+        return func(**_filter_tool_arguments(func, arguments))
     except Exception:
         logger.exception("Tool call failed: %s(%s)", name, arguments)
         return None

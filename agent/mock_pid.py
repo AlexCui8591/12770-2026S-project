@@ -67,6 +67,9 @@ class MockPIDController:
     cumulative_energy_kwh: float = 0.0
     oscillation_count: int = 0
     cost_J: float = 0.0
+    comfort_weight: float = _COST_COMFORT_WEIGHT
+    energy_weight: float = _COST_ENERGY_WEIGHT
+    response_weight: float = _COST_RESPONSE_WEIGHT
     # timestamp is produced on read, not stored
 
     # Environment (settable, not returned by pid_telemetry — lives in env tools)
@@ -105,6 +108,11 @@ class MockPIDController:
             "cumulative_energy_kwh": round(self.cumulative_energy_kwh, 4),
             "oscillation_count": self.oscillation_count,
             "cost_J": round(self.cost_J, 3),
+            "cost_weights": {
+                "comfort": round(self.comfort_weight, 4),
+                "energy": round(self.energy_weight, 4),
+                "response": round(self.response_weight, 4),
+            },
         }
 
     def set_gains(self, kp: float | None = None, ki: float | None = None,
@@ -162,9 +170,9 @@ class MockPIDController:
         # Cost J per Milestone eq. (2): weighted quadratic comfort + energy + du/dt
         du = self.control_signal - (self.kp * self._prev_error * 100.0)  # rough du/dt
         self.cost_J = (
-            _COST_COMFORT_WEIGHT * (self.tracking_error ** 2)
-            + _COST_ENERGY_WEIGHT * (u_watts / 1000.0)  # normalize to kW
-            + _COST_RESPONSE_WEIGHT * (du / 1000.0) ** 2
+            self.comfort_weight * (self.tracking_error ** 2)
+            + self.energy_weight * (u_watts / 1000.0)  # normalize to kW
+            + self.response_weight * (du / 1000.0) ** 2
         )
 
         self._prev_error = error
@@ -195,6 +203,7 @@ def update_default_controller(
     cumulative_energy_kwh: float | None = None,
     oscillation_count: int | None = None,
     cost_J: float | None = None,
+    cost_weights: dict[str, float] | None = None,
     outdoor_temp: float | None = None,
     timestamp: datetime | None = None,
 ) -> MockPIDController:
@@ -219,6 +228,13 @@ def update_default_controller(
         DEFAULT_CONTROLLER.oscillation_count = int(oscillation_count)
     if cost_J is not None:
         DEFAULT_CONTROLLER.cost_J = float(cost_J)
+    if cost_weights is not None:
+        if "comfort" in cost_weights:
+            DEFAULT_CONTROLLER.comfort_weight = float(cost_weights["comfort"])
+        if "energy" in cost_weights:
+            DEFAULT_CONTROLLER.energy_weight = float(cost_weights["energy"])
+        if "response" in cost_weights:
+            DEFAULT_CONTROLLER.response_weight = float(cost_weights["response"])
     if outdoor_temp is not None:
         DEFAULT_CONTROLLER.outdoor_temp = float(outdoor_temp)
     if timestamp is not None:

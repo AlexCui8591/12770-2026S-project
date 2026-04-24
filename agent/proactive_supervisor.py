@@ -18,9 +18,14 @@ from .tools import TOOL_SCHEMAS, dispatch_tool_call
 logger = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).parent / "proactive_supervisor_prompt.txt"
-MAX_TOOL_ROUNDS = 3
+MAX_TOOL_ROUNDS = 4
 MAX_RETRIES = 1
-SUPERVISOR_TOOL_NAMES = {"get_pid_telemetry", "get_weather_forecast", "get_schedule"}
+SUPERVISOR_TOOL_NAMES = {
+    "get_pid_telemetry",
+    "get_weather_forecast",
+    "get_tariff_schedule",
+    "get_schedule",
+}
 SUPERVISOR_TOOL_SCHEMAS = [
     schema
     for schema in TOOL_SCHEMAS
@@ -48,6 +53,8 @@ class ProactiveSupervisorInput:
     current_kp: float
     current_ki: float
     current_kd: float
+    current_setpoint_c: float
+    current_cost_weights: dict[str, float]
 
 
 @dataclass
@@ -57,6 +64,8 @@ class ProactiveSupervisorDecision:
     kp: float | None
     ki: float | None
     kd: float | None
+    setpoint_c: float | None
+    cost_weights: dict[str, float] | None
     rationale: str
     source: str
 
@@ -82,12 +91,15 @@ def _build_messages(supervisor_input: ProactiveSupervisorInput) -> list[dict[str
         f"Current time: {supervisor_input.current_time}\n"
         f"Current gains: kp={supervisor_input.current_kp:.4f}, "
         f"ki={supervisor_input.current_ki:.4f}, kd={supervisor_input.current_kd:.4f}\n"
+        f"Current online setpoint: {supervisor_input.current_setpoint_c:.3f} C\n"
+        "Current online cost weights:\n"
+        f"{json.dumps(supervisor_input.current_cost_weights, ensure_ascii=False, indent=2)}\n\n"
         "Recent 5-minute telemetry summary:\n"
         f"{json.dumps(supervisor_input.telemetry_window, ensure_ascii=False, indent=2)}\n\n"
         "Local proactive context summary:\n"
         f"{json.dumps(supervisor_input.forecast_summary, ensure_ascii=False, indent=2)}\n\n"
         "Before deciding, call get_pid_telemetry(room), get_weather_forecast(city, hours_ahead), "
-        "and get_schedule(user_id, date)."
+        "get_tariff_schedule(time, hours_ahead), and get_schedule(user_id, date)."
     )
     return [
         {"role": "system", "content": system_prompt},
@@ -108,6 +120,9 @@ def _build_messages_with_tool_data(
         f"Current time: {supervisor_input.current_time}\n"
         f"Current gains: kp={supervisor_input.current_kp:.4f}, "
         f"ki={supervisor_input.current_ki:.4f}, kd={supervisor_input.current_kd:.4f}\n"
+        f"Current online setpoint: {supervisor_input.current_setpoint_c:.3f} C\n"
+        "Current online cost weights:\n"
+        f"{json.dumps(supervisor_input.current_cost_weights, ensure_ascii=False, indent=2)}\n\n"
         "Recent 5-minute telemetry summary:\n"
         f"{json.dumps(supervisor_input.telemetry_window, ensure_ascii=False, indent=2)}\n\n"
         "Local proactive context summary:\n"
@@ -160,17 +175,40 @@ def _coerce_optional_float(value: Any) -> float | None:
         raise SupervisorSchemaError(f"Could not parse numeric gain value: {value!r}") from exc
 
 
+def _coerce_optional_cost_weights(value: Any) -> dict[str, float] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise SupervisorSchemaError("cost_weights must be an object")
+
+    parsed: dict[str, float] = {}
+    for key in ("comfort", "energy", "response"):
+        raw = value.get(key)
+        if raw is None:
+            continue
+        try:
+            parsed[key] = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise SupervisorSchemaError(f"Could not parse cost weight {key}: {raw!r}") from exc
+
+    return parsed or None
+
+
 def _validate_decision(raw: dict[str, Any]) -> ProactiveSupervisorDecision:
     mode = str(raw.get("mode", "hold")).strip().lower()
     action = str(raw.get("action", "hold")).strip().lower()
     if mode not in {"hold", "proactive", "reactive"}:
         raise SupervisorSchemaError(f"Invalid supervisor mode: {mode!r}")
-    if action not in {"hold", "set_pid"}:
+    if action not in {"hold", "set_pid", "set_setpoint", "set_cost_weights", "multi_action"}:
         raise SupervisorSchemaError(f"Invalid supervisor action: {action!r}")
 
     kp = _coerce_optional_float(raw.get("kp"))
     ki = _coerce_optional_float(raw.get("ki"))
     kd = _coerce_optional_float(raw.get("kd"))
+    setpoint_c = _coerce_optional_float(
+        raw.get("setpoint_C", raw.get("setpoint_c", raw.get("setpoint")))
+    )
+    cost_weights = _coerce_optional_cost_weights(raw.get("cost_weights"))
     rationale = str(raw.get("rationale", "")).strip()
 
     if mode == "hold":
@@ -179,11 +217,14 @@ def _validate_decision(raw: dict[str, Any]) -> ProactiveSupervisorDecision:
         kp = None
         ki = None
         kd = None
+        setpoint_c = None
+        cost_weights = None
     else:
-        if action != "set_pid":
-            raise SupervisorSchemaError("proactive/reactive modes require set_pid action")
-        if kp is None and ki is None and kd is None:
-            raise SupervisorSchemaError("set_pid action requires at least one gain value")
+        has_pid = kp is not None or ki is not None or kd is not None
+        has_setpoint = setpoint_c is not None
+        has_cost_weights = cost_weights is not None
+        if not (has_pid or has_setpoint or has_cost_weights):
+            raise SupervisorSchemaError("non-hold action requires at least one control update")
 
     return ProactiveSupervisorDecision(
         mode=mode,
@@ -191,6 +232,8 @@ def _validate_decision(raw: dict[str, Any]) -> ProactiveSupervisorDecision:
         kp=kp,
         ki=ki,
         kd=kd,
+        setpoint_c=setpoint_c,
+        cost_weights=cost_weights,
         rationale=rationale,
         source="agent",
     )
@@ -260,7 +303,11 @@ def _prefetch_tool_data(supervisor_input: ProactiveSupervisorInput) -> dict[str,
         ),
         "weather_forecast": dispatch_tool_call(
             "get_weather_forecast",
-            {"city": supervisor_input.city, "hours_ahead": 6},
+            {"city": supervisor_input.city, "hours_ahead": 12},
+        ),
+        "tariff_schedule": dispatch_tool_call(
+            "get_tariff_schedule",
+            {"time": supervisor_input.current_time, "hours_ahead": 12},
         ),
         "schedule": dispatch_tool_call(
             "get_schedule",

@@ -1,0 +1,53 @@
+{
+  "condition": "C3",
+  "scenario_id": "S5",
+  "scenario_name": "Multi-Disturbance Stress",
+  "scenario_command": "Balance comfort and cost for 24 hours.",
+  "seed": 456,
+  "room": "bedroom",
+  "initial_pid": {
+    "KP": 1.0,
+    "KI": 3.0,
+    "KD": 0.0
+  },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "llm_model": "qwen2.5:7b",
+  "control_action_space": [
+    "set_pid",
+    "set_setpoint",
+    "set_cost_weights"
+  ],
+  "setpoint_adjustment_online": true,
+  "cost_weight_adjustment_online": true,
+  "supervision_interval_min": 10,
+  "forced_rule_steps": [],
+  "num_supervision_updates": 143,
+  "decision_source_counts": {
+    "agent": 143
+  },
+  "decision_mode_counts": {
+    "proactive": 135,
+    "reactive": 8
+  },
+  "metrics": {
+    "MAD_C": 0.32440174279647777,
+    "CVR_fraction": 0.0,
+    "CE_kWh": 0.18900369830919367,
+    "EC_USD": 0.03325360626800365,
+    "RT_s": 2580.0,
+    "ST_s": 17880.0,
+    "OC_count": 1,
+    "MO_C": 1.3633931160995232,
+    "weighted_objective_J": 1.2991941978382697
+  },
+  "scenario_notes": {
+    "scenario_name": "Multi-Disturbance Stress",
+    "command": "Balance comfort and cost for 24 hours.",
+    "duration_steps": 1440,
+    "start_minute": 0,
+    "working_setpoint_scale": "demo_heating_scale_38_to_41C",
+    "weather_disturbance": "Applied cold front, warm rebound, and evening cooldown for the stress test.",
+    "tariff_modifier": "Doubled on-peak tariff for the 24-hour stress test."
+  }
+}

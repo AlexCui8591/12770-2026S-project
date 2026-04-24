@@ -1,0 +1,7 @@
+{
+  "scenario_name": "Steady-State Tracking",
+  "command": "Set the bedroom to 22\u00b0C.",
+  "duration_steps": 120,
+  "start_minute": 480,
+  "working_setpoint_scale": "demo_heating_scale_38_to_41C"
+}

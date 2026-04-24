@@ -1,0 +1,11 @@
+{
+  "MAD_C": 0.8959245996099887,
+  "CVR_fraction": 0.0,
+  "CE_kWh": 0.020173591423388117,
+  "EC_USD": 0.0024208309708065737,
+  "RT_s": 2520.0,
+  "ST_s": null,
+  "OC_count": null,
+  "MO_C": null,
+  "weighted_objective_J": 12.376972927584138
+}

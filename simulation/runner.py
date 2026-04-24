@@ -164,6 +164,12 @@ def parse_args() -> argparse.Namespace:
         default="on",
         help="Show batch-level progress with ETA in the terminal.",
     )
+    parser.add_argument(
+        "--supervision-interval-min",
+        type=int,
+        default=5,
+        help="Minutes between online C2/C3 supervisor calls. Larger values reduce LLM calls.",
+    )
     return parser.parse_args()
 
 
@@ -175,6 +181,8 @@ def main() -> None:
     )
     scenario_ids = default_scenario_ids() if args.scenario == "all" else [args.scenario]
     requested_runs = args.runs or settings.runs_per_condition
+    if args.supervision_interval_min <= 0:
+        raise ValueError("--supervision-interval-min must be a positive integer.")
     seeds = resolve_seed_list(settings.seeds, requested_runs)
     output_root = Path(args.output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -221,7 +229,7 @@ def main() -> None:
             planned_run.scenario_id,
             planned_run.seed,
             room=args.room,
-            supervision_interval_steps=settings.conditions["C2"].supervision_interval_steps,
+            supervision_interval_steps=args.supervision_interval_min,
             settings=settings,
         )
         base_pid = tuning_cache[planned_run.seed]
@@ -233,6 +241,7 @@ def main() -> None:
             effective_supervisor_mode=effective_supervisor_mode,
             llm_model=args.model,
             supervisor_client=supervisor_client,
+            supervision_interval_min=args.supervision_interval_min,
         )
         _save_run_outputs(
             run_dir=planned_run.run_dir,
@@ -432,6 +441,7 @@ def _run_condition(
     effective_supervisor_mode: str,
     llm_model: str,
     supervisor_client: Any,
+    supervision_interval_min: int,
 ) -> dict[str, Any]:
     time_index = scenario_run.time_index
     ta_array = scenario_run.outdoor_temp_c
@@ -505,6 +515,7 @@ def _run_condition(
             llm_model=llm_model,
             supervisor_client=supervisor_client,
             forced_rule_steps=scenario_run.forced_rule_steps,
+            supervision_interval_min=supervision_interval_min,
         )
         metrics = c2_reactive_pid_supervision.compute_evaluation_metrics(
             time_index=time_index,
@@ -531,12 +542,16 @@ def _run_condition(
             room=scenario_run.room,
             llm_model=llm_model,
             supervisor_client=supervisor_client,
+            supervision_interval_min=supervision_interval_min,
         )
         metrics = c3_proactive_pid_supervision.compute_evaluation_metrics(
             time_index=time_index,
             ti=sim["Ti"],
-            tsp=tsp,
+            tsp=sim.get("Tsp_runtime", tsp),
             phea_w=sim["Phea"],
+            comfort_weight=sim.get("comfort_weight"),
+            energy_weight=sim.get("energy_weight"),
+            response_weight=sim.get("response_weight"),
         )
         plots["temperature"] = c3_proactive_pid_supervision.save_temperature_plot
         plots["power"] = c3_proactive_pid_supervision.save_power_plot
@@ -571,6 +586,16 @@ def _run_condition(
         "requested_supervisor_mode": requested_supervisor_mode if condition_id in {"C2", "C3"} else None,
         "effective_supervisor_mode": effective_supervisor_mode if condition_id in {"C2", "C3"} else None,
         "llm_model": llm_model if condition_id in {"C2", "C3"} and effective_supervisor_mode != "rules" else None,
+        "control_action_space": (
+            ["set_pid"]
+            if condition_id == "C2"
+            else ["set_pid", "set_setpoint", "set_cost_weights"]
+            if condition_id == "C3"
+            else []
+        ),
+        "setpoint_adjustment_online": condition_id == "C3",
+        "cost_weight_adjustment_online": condition_id == "C3",
+        "supervision_interval_min": supervision_interval_min if condition_id in {"C2", "C3"} else None,
         "forced_rule_steps": sorted(scenario_run.forced_rule_steps) if condition_id == "C2" else [],
         "num_supervision_updates": int(len(supervision_log)),
         "decision_source_counts": dict(decision_source_counts),
@@ -586,6 +611,7 @@ def _run_condition(
         "seed": scenario_run.seed,
         "requested_supervisor_mode": requested_supervisor_mode if condition_id in {"C2", "C3"} else None,
         "effective_supervisor_mode": effective_supervisor_mode if condition_id in {"C2", "C3"} else None,
+        "supervision_interval_min": supervision_interval_min if condition_id in {"C2", "C3"} else None,
         "num_supervision_updates": int(len(supervision_log)),
     }
     manifest_record.update(metrics)
@@ -593,7 +619,8 @@ def _run_condition(
     return {
         "time_index": time_index,
         "outdoor_temp_c": ta_array,
-        "setpoint_c": tsp,
+        "setpoint_c": sim.get("Tsp_runtime", tsp),
+        "base_setpoint_c": tsp,
         "tariff_usd_per_kwh": scenario_run.tariff_usd_per_kwh,
         "sim": sim,
         "supervision_log": supervision_log,
@@ -635,6 +662,7 @@ def _save_run_outputs(
         {
             "time": time_index,
             "Ta_C": result["outdoor_temp_c"],
+            "Tsp_base_C": result.get("base_setpoint_c", result["setpoint_c"]),
             "Tsp_C": result["setpoint_c"],
             "Ti_C": sim["Ti"],
             "Phea_W": sim["Phea"],
@@ -648,6 +676,10 @@ def _save_run_outputs(
         timeseries["Kp"] = sim["Kp"]
         timeseries["Ki"] = sim["Ki"]
         timeseries["Kd"] = sim["Kd"]
+    if "comfort_weight" in sim:
+        timeseries["comfort_weight"] = sim["comfort_weight"]
+        timeseries["energy_weight"] = sim["energy_weight"]
+        timeseries["response_weight"] = sim["response_weight"]
     timeseries.to_csv(run_dir / "timeseries.csv", index=False)
 
     supervision_log = result["supervision_log"]

@@ -1,0 +1,51 @@
+{
+  "condition": "C3",
+  "scenario_id": "S2",
+  "scenario_name": "Weather Disturbance",
+  "scenario_command": "Keep the room comfortable.",
+  "seed": 123,
+  "room": "bedroom",
+  "initial_pid": {
+    "KP": 1.0,
+    "KI": 2.5,
+    "KD": 0.0
+  },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "llm_model": "qwen2.5:7b",
+  "control_action_space": [
+    "set_pid",
+    "set_setpoint",
+    "set_cost_weights"
+  ],
+  "setpoint_adjustment_online": true,
+  "cost_weight_adjustment_online": true,
+  "supervision_interval_min": 10,
+  "forced_rule_steps": [],
+  "num_supervision_updates": 17,
+  "decision_source_counts": {
+    "agent": 17
+  },
+  "decision_mode_counts": {
+    "proactive": 17
+  },
+  "metrics": {
+    "MAD_C": 0.3838891589638044,
+    "CVR_fraction": 0.041666666666666664,
+    "CE_kWh": 0.03998266207481224,
+    "EC_USD": 0.0047979194489774675,
+    "RT_s": 3660.0,
+    "ST_s": 4800.0,
+    "OC_count": 1,
+    "MO_C": null,
+    "weighted_objective_J": 10.442600679376778
+  },
+  "scenario_notes": {
+    "scenario_name": "Weather Disturbance",
+    "command": "Keep the room comfortable.",
+    "duration_steps": 180,
+    "start_minute": 360,
+    "working_setpoint_scale": "demo_heating_scale_38_to_41C",
+    "weather_disturbance": "Applied 10C step drop from minute 30 onward."
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "scenario_name": "LLM Failure Resilience",
+  "command": "Keep the room at 21\u00b0C.",
+  "duration_steps": 240,
+  "start_minute": 480,
+  "working_setpoint_scale": "demo_heating_scale_38_to_41C",
+  "failure_injection_steps": [
+    10,
+    90,
+    100,
+    120,
+    160,
+    170
+  ],
+  "failure_injection_count": 6
+}

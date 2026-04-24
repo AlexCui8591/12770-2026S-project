@@ -1,16 +1,13 @@
 """
 run_c3_proactive_pid_supervision.py
 
-C3 baseline:
+C3 full-action proactive agent:
 - Initial PID parameters are directly inherited from the C0 run
 - Setpoint schedule is the same as the updated C1 / C2 schedule
 - The controller is supervised every 5 minutes
-- Only PID parameters are adjusted online
-- Setpoint is NOT adjusted online in this version
-- Cost weights are NOT adjusted online in this version
-- Proactive adjustment is triggered when the generated outdoor temperature
-  changes by more than 0.5°C over the next 1 hour
-- Future weather uses the generated temperature data directly
+- PID parameters, online setpoint, and online cost weights are adjusted online
+- Proactive adjustment uses future weather, tariff, and user-habit context
+- Future weather and tariff data are exposed through synthetic tool overrides
 - User habits are used as additional proactive cues
 - Initial indoor temperature equals the initial outdoor temperature
 - Heater power is saturated to [0, 14.25] W
@@ -82,13 +79,17 @@ WINDOW_MIN = 5
 FORECAST_HORIZON_MIN = 60
 SIGNIFICANT_FORECAST_DELTA_C = 0.5
 
-# PID bounds and step limits
+# PID, setpoint, and cost-weight bounds
 KP_MIN, KP_MAX = 0.05, 15.0
 KI_MIN, KI_MAX = 0.0, 5.0
 KD_MIN, KD_MAX = 0.0, 3.0
 MAX_KP_STEP = 0.30
 MAX_KI_STEP = 0.20
 MAX_KD_STEP = 0.20
+SETPOINT_MIN_C, SETPOINT_MAX_C = 37.0, 41.5
+MAX_SETPOINT_STEP_C = 0.5
+COST_WEIGHT_MIN, COST_WEIGHT_MAX = 0.05, 0.90
+DEFAULT_COST_WEIGHTS = {"comfort": 0.34, "energy": 0.33, "response": 0.33}
 
 # Evaluation thresholds
 CVR_THRESHOLD_C = 1.5
@@ -109,7 +110,7 @@ DEFAULT_USER_OBJECTIVE = (
 DEFAULT_ROOM = "bedroom"
 DEFAULT_CITY = "Pittsburgh"
 DEFAULT_USER_ID = "default"
-TOOL_OVERRIDE_NAMES = ["get_weather_forecast", "get_schedule"]
+TOOL_OVERRIDE_NAMES = ["get_weather_forecast", "get_tariff_schedule", "get_schedule"]
 
 
 def build_instruction_log() -> pd.DataFrame:
@@ -300,6 +301,43 @@ def clip_with_step(old: float, new: float, low: float, high: float, max_step: fl
     return float(max(low, min(high, old + delta)))
 
 
+def normalize_cost_weights(
+    raw_weights: dict[str, float] | None,
+    current_weights: dict[str, float] | None = None,
+) -> dict[str, float]:
+    base = dict(DEFAULT_COST_WEIGHTS if current_weights is None else current_weights)
+    if raw_weights:
+        for key in ("comfort", "energy", "response"):
+            if key in raw_weights and raw_weights[key] is not None:
+                try:
+                    base[key] = float(raw_weights[key])
+                except (TypeError, ValueError):
+                    pass
+
+    clipped = {
+        key: max(COST_WEIGHT_MIN, min(COST_WEIGHT_MAX, float(base.get(key, DEFAULT_COST_WEIGHTS[key]))))
+        for key in ("comfort", "energy", "response")
+    }
+    total = sum(clipped.values())
+    if total <= 0:
+        return dict(DEFAULT_COST_WEIGHTS)
+    return {key: float(value / total) for key, value in clipped.items()}
+
+
+def _weighted_cost_proxy(
+    telemetry: dict[str, float | int | str],
+    cost_weights: dict[str, float],
+) -> float:
+    comfort = float(telemetry["mean_abs_error"]) ** 2
+    energy = float(telemetry["energy_kWh"]) * 10.0
+    response = (float(telemetry["power_std_W"]) / max(1.0, PMAX)) ** 2
+    return (
+        cost_weights["comfort"] * comfort
+        + cost_weights["energy"] * energy
+        + cost_weights["response"] * response
+    )
+
+
 def pid_controller(
     ti: float,
     tsp: float,
@@ -345,6 +383,19 @@ class Building1R1C:
 
     def get_state(self) -> float:
         return float(self.ti)
+
+
+@dataclass
+class SupervisorProposal:
+    kp: float
+    ki: float
+    kd: float
+    setpoint_c: float
+    cost_weights: dict[str, float]
+    decision_mode: str
+    action: str
+    decision_source: str
+    rationale: str
 
 
 def summarize_window(
@@ -532,6 +583,80 @@ def proactive_pid_supervisor(
     return new_kp, new_ki, new_kd, action, reason
 
 
+def proactive_full_action_supervisor(
+    telemetry: dict[str, float | int | str],
+    forecast: dict[str, float | int | str],
+    kp: float,
+    ki: float,
+    kd: float,
+    setpoint_c: float,
+    cost_weights: dict[str, float],
+) -> SupervisorProposal:
+    """Rule fallback for C3 full-action supervision."""
+    delta_1h = float(forecast["Ta_delta_next_1h_C"])
+    next_habit_type = str(forecast["next_habit_type"])
+    mins_to_habit = int(forecast["minutes_to_next_habit"])
+
+    new_kp, new_ki, new_kd = kp, ki, kd
+    new_setpoint = setpoint_c
+    new_weights = dict(cost_weights)
+    action = "hold"
+    reason = "no proactive trigger"
+
+    if delta_1h <= -SIGNIFICANT_FORECAST_DELTA_C:
+        new_kp = clip_with_step(kp, kp * 1.10, KP_MIN, KP_MAX, MAX_KP_STEP)
+        new_ki = clip_with_step(ki, ki * 1.08 + 0.01, KI_MIN, KI_MAX, MAX_KI_STEP)
+        new_setpoint = clip_with_step(setpoint_c, setpoint_c + 0.2, SETPOINT_MIN_C, SETPOINT_MAX_C, MAX_SETPOINT_STEP_C)
+        new_weights = normalize_cost_weights(
+            {"comfort": cost_weights["comfort"] + 0.08, "response": cost_weights["response"] + 0.04},
+            cost_weights,
+        )
+        action = "multi_action"
+        reason = f"forecast next-1h outdoor temperature drop = {delta_1h:.3f} C"
+        return SupervisorProposal(new_kp, new_ki, new_kd, new_setpoint, new_weights, "proactive", action, "rules", reason)
+
+    if delta_1h >= SIGNIFICANT_FORECAST_DELTA_C:
+        new_kp = clip_with_step(kp, kp * 0.94, KP_MIN, KP_MAX, MAX_KP_STEP)
+        new_ki = clip_with_step(ki, ki * 0.92, KI_MIN, KI_MAX, MAX_KI_STEP)
+        new_setpoint = clip_with_step(setpoint_c, setpoint_c - 0.2, SETPOINT_MIN_C, SETPOINT_MAX_C, MAX_SETPOINT_STEP_C)
+        new_weights = normalize_cost_weights(
+            {"energy": cost_weights["energy"] + 0.08, "comfort": cost_weights["comfort"] - 0.04},
+            cost_weights,
+        )
+        action = "multi_action"
+        reason = f"forecast next-1h outdoor temperature rise = {delta_1h:.3f} C"
+        return SupervisorProposal(new_kp, new_ki, new_kd, new_setpoint, new_weights, "proactive", action, "rules", reason)
+
+    if 0 <= mins_to_habit <= FORECAST_HORIZON_MIN:
+        if next_habit_type == "warmer":
+            new_kp = clip_with_step(kp, kp * 1.08, KP_MIN, KP_MAX, MAX_KP_STEP)
+            new_ki = clip_with_step(ki, ki * 1.06 + 0.005, KI_MIN, KI_MAX, MAX_KI_STEP)
+            new_setpoint = clip_with_step(setpoint_c, setpoint_c + 0.3, SETPOINT_MIN_C, SETPOINT_MAX_C, MAX_SETPOINT_STEP_C)
+            new_weights = normalize_cost_weights({"comfort": cost_weights["comfort"] + 0.10}, cost_weights)
+            action = "multi_action"
+            reason = f"user habit event '{forecast['next_habit_label']}' in {mins_to_habit} min"
+            return SupervisorProposal(new_kp, new_ki, new_kd, new_setpoint, new_weights, "proactive", action, "rules", reason)
+
+        if next_habit_type == "stability":
+            new_kp = clip_with_step(kp, kp * 0.94, KP_MIN, KP_MAX, MAX_KP_STEP)
+            new_kd = clip_with_step(kd, kd * 1.10 + 0.01, KD_MIN, KD_MAX, MAX_KD_STEP)
+            new_weights = normalize_cost_weights({"response": cost_weights["response"] + 0.12}, cost_weights)
+            action = "multi_action"
+            reason = f"user habit event '{forecast['next_habit_label']}' in {mins_to_habit} min"
+            return SupervisorProposal(new_kp, new_ki, new_kd, new_setpoint, new_weights, "proactive", action, "rules", reason)
+
+        if next_habit_type == "cooler":
+            new_ki = clip_with_step(ki, ki * 0.90, KI_MIN, KI_MAX, MAX_KI_STEP)
+            new_kp = clip_with_step(kp, kp * 0.96, KP_MIN, KP_MAX, MAX_KP_STEP)
+            new_setpoint = clip_with_step(setpoint_c, setpoint_c - 0.3, SETPOINT_MIN_C, SETPOINT_MAX_C, MAX_SETPOINT_STEP_C)
+            new_weights = normalize_cost_weights({"energy": cost_weights["energy"] + 0.08}, cost_weights)
+            action = "multi_action"
+            reason = f"user habit event '{forecast['next_habit_label']}' in {mins_to_habit} min"
+            return SupervisorProposal(new_kp, new_ki, new_kd, new_setpoint, new_weights, "proactive", action, "rules", reason)
+
+    return SupervisorProposal(new_kp, new_ki, new_kd, new_setpoint, new_weights, "hold", action, "rules", reason)
+
+
 def _sync_agent_pid_snapshot(
     ts: pd.Timestamp,
     telemetry: dict[str, float | int | str],
@@ -539,8 +664,9 @@ def _sync_agent_pid_snapshot(
     ki: float,
     kd: float,
     ta_now: float,
+    cost_weights: dict[str, float],
 ) -> None:
-    cost_proxy = float(telemetry["mean_abs_error"]) ** 2 + float(telemetry["energy_kWh"]) * 10.0
+    cost_proxy = _weighted_cost_proxy(telemetry, cost_weights)
     update_default_controller(
         kp=kp,
         ki=ki,
@@ -552,6 +678,7 @@ def _sync_agent_pid_snapshot(
         cumulative_energy_kwh=float(telemetry["energy_kWh"]),
         oscillation_count=int(telemetry["error_sign_changes"]),
         cost_J=cost_proxy,
+        cost_weights=cost_weights,
         outdoor_temp=float(ta_now),
         timestamp=ts.to_pydatetime(),
     )
@@ -565,17 +692,20 @@ def _build_weather_forecast_override(
     def _override(city: str, hours_ahead: int = 24) -> dict:
         hours_ahead = max(1, min(72, int(hours_ahead)))
         horizon_steps = min(len(ta_array) - current_idx - 1, hours_ahead * 60)
-        sample_offsets = list(range(0, max(1, horizon_steps) + 1, 180))
+        sample_offsets = list(range(0, max(1, horizon_steps) + 1, 60))
         if not sample_offsets:
             sample_offsets = [0]
 
         points = []
+        temps: list[float] = []
         for offset in sample_offsets:
             idx = min(len(ta_array) - 1, current_idx + offset)
+            temp_c = float(ta_array[idx])
+            temps.append(temp_c)
             points.append(
                 {
                     "timestamp": pd.Timestamp(time_index[idx]).isoformat(),
-                    "outdoor_temp": float(ta_array[idx]),
+                    "outdoor_temp": temp_c,
                     "humidity": 50,
                     "condition": "synthetic",
                     "wind_speed_kmh": 0,
@@ -586,9 +716,50 @@ def _build_weather_forecast_override(
         return {
             "city": city,
             "hours_ahead": hours_ahead,
-            "granularity_hours": 3,
+            "granularity_hours": 1,
             "points": points,
+            "summary": {
+                "min_outdoor_temp_C": min(temps) if temps else None,
+                "max_outdoor_temp_C": max(temps) if temps else None,
+                "delta_outdoor_temp_C": (temps[-1] - temps[0]) if len(temps) >= 2 else 0.0,
+                "num_points": len(points),
+            },
             "source": "synthetic_scenario",
+        }
+
+    return _override
+
+
+def _build_tariff_schedule_override(current_ts: pd.Timestamp):
+    def _override(time: str, hours_ahead: int = 24) -> dict:
+        hours_ahead = max(1, min(48, int(hours_ahead)))
+        try:
+            start_ts = pd.Timestamp(time)
+        except (TypeError, ValueError):
+            start_ts = current_ts
+
+        schedule = []
+        for offset in range(hours_ahead):
+            ts = start_ts + pd.Timedelta(hours=offset)
+            price = TARIFF_ONPEAK if ts.hour in ONPEAK_HOURS else TARIFF_OFFPEAK
+            tier = "on_peak" if ts.hour in ONPEAK_HOURS else "off_peak"
+            schedule.append(
+                {
+                    "timestamp": ts.isoformat(),
+                    "hour_of_day": int(ts.hour),
+                    "tier": tier,
+                    "price_per_kwh": float(price),
+                }
+            )
+
+        next_off_peak = next((entry["timestamp"] for entry in schedule if entry["tier"] == "off_peak"), None)
+        return {
+            "start_time": start_ts.isoformat(),
+            "hours_ahead": hours_ahead,
+            "schedule": schedule,
+            "next_off_peak": next_off_peak,
+            "data_status": "ok",
+            "source": "synthetic_tariff",
         }
 
     return _override
@@ -623,6 +794,10 @@ def _install_proactive_tool_context(
         _build_weather_forecast_override(time_index, ta_array, current_idx),
     )
     set_tool_override(
+        "get_tariff_schedule",
+        _build_tariff_schedule_override(time_index[current_idx]),
+    )
+    set_tool_override(
         "get_schedule",
         _build_schedule_override(time_index[current_idx]),
     )
@@ -637,6 +812,8 @@ def _agent_proactive_pid_supervisor(
     kp: float,
     ki: float,
     kd: float,
+    setpoint_c: float,
+    cost_weights: dict[str, float],
     *,
     room: str,
     city: str,
@@ -645,8 +822,8 @@ def _agent_proactive_pid_supervisor(
     llm_model: str,
     allow_fallback: bool,
     supervisor_client=None,
-) -> tuple[float, float, float, str, str, str, str]:
-    _sync_agent_pid_snapshot(time_index[idx], telemetry, kp, ki, kd, ta_array[idx])
+) -> SupervisorProposal:
+    _sync_agent_pid_snapshot(time_index[idx], telemetry, kp, ki, kd, ta_array[idx], cost_weights)
     _install_proactive_tool_context(time_index, ta_array, idx)
 
     supervisor_input = ProactiveSupervisorInput(
@@ -660,6 +837,8 @@ def _agent_proactive_pid_supervisor(
         current_kp=kp,
         current_ki=ki,
         current_kd=kd,
+        current_setpoint_c=setpoint_c,
+        current_cost_weights=cost_weights,
     )
 
     try:
@@ -669,49 +848,79 @@ def _agent_proactive_pid_supervisor(
             model=llm_model,
         )
         if decision.mode == "hold":
-            return float(kp), float(ki), float(kd), "hold", "hold", decision.source, decision.rationale
+            return SupervisorProposal(
+                float(kp),
+                float(ki),
+                float(kd),
+                float(setpoint_c),
+                dict(cost_weights),
+                "hold",
+                "hold",
+                decision.source,
+                decision.rationale,
+            )
 
         kp_new = clip_with_step(kp, kp if decision.kp is None else decision.kp, KP_MIN, KP_MAX, MAX_KP_STEP)
         ki_new = clip_with_step(ki, ki if decision.ki is None else decision.ki, KI_MIN, KI_MAX, MAX_KI_STEP)
         kd_new = clip_with_step(kd, kd if decision.kd is None else decision.kd, KD_MIN, KD_MAX, MAX_KD_STEP)
-        return float(kp_new), float(ki_new), float(kd_new), decision.mode, decision.action, decision.source, decision.rationale
+        setpoint_new = clip_with_step(
+            setpoint_c,
+            setpoint_c if decision.setpoint_c is None else decision.setpoint_c,
+            SETPOINT_MIN_C,
+            SETPOINT_MAX_C,
+            MAX_SETPOINT_STEP_C,
+        )
+        weights_new = normalize_cost_weights(decision.cost_weights, cost_weights)
+        return SupervisorProposal(
+            float(kp_new),
+            float(ki_new),
+            float(kd_new),
+            float(setpoint_new),
+            weights_new,
+            decision.mode,
+            decision.action,
+            decision.source,
+            decision.rationale,
+        )
     except Exception as exc:
         if not allow_fallback:
             raise
 
-        kp_prop, ki_prop, kd_prop, proactive_action, proactive_reason = proactive_pid_supervisor(
+        proposal = proactive_full_action_supervisor(
             telemetry=telemetry,
             forecast=forecast,
             kp=kp,
             ki=ki,
             kd=kd,
+            setpoint_c=setpoint_c,
+            cost_weights=cost_weights,
         )
 
-        decision_mode = "proactive"
-        action = proactive_action
-        rationale = proactive_reason
-
-        if proactive_action == "hold":
+        if proposal.action == "hold":
             kp_prop, ki_prop, kd_prop, reactive_action = reactive_pid_supervisor(
                 telemetry=telemetry,
                 kp=kp,
                 ki=ki,
                 kd=kd,
             )
-            decision_mode = "reactive" if reactive_action != "hold" else "hold"
-            action = reactive_action
-            rationale = "no proactive trigger; fallback to reactive rule"
+            proposal = SupervisorProposal(
+                float(kp_prop),
+                float(ki_prop),
+                float(kd_prop),
+                float(setpoint_c),
+                dict(cost_weights),
+                "reactive" if reactive_action != "hold" else "hold",
+                "set_pid" if reactive_action != "hold" else "hold",
+                "rules_fallback",
+                "no proactive trigger; fallback to reactive rule",
+            )
 
-        fallback_rationale = f"agent failed; fell back to rules ({type(exc).__name__}: {exc}); {rationale}"
-        return (
-            float(kp_prop),
-            float(ki_prop),
-            float(kd_prop),
-            decision_mode,
-            action,
-            "rules_fallback",
-            fallback_rationale,
+        proposal.decision_source = "rules_fallback"
+        proposal.rationale = (
+            f"agent failed; fell back to rules ({type(exc).__name__}: {exc}); "
+            f"{proposal.rationale}"
         )
+        return proposal
     finally:
         clear_tool_overrides(TOOL_OVERRIDE_NAMES)
 
@@ -750,10 +959,16 @@ def simulate_proactive_pid_supervision(
     kp_hist = np.zeros(n, dtype=float)
     ki_hist = np.zeros(n, dtype=float)
     kd_hist = np.zeros(n, dtype=float)
+    tsp_runtime_hist = np.zeros(n, dtype=float)
+    comfort_weight_hist = np.zeros(n, dtype=float)
+    energy_weight_hist = np.zeros(n, dtype=float)
+    response_weight_hist = np.zeros(n, dtype=float)
 
     integral = 0.0
     error_prev = 0.0
     kp, ki, kd = float(kp0), float(ki0), float(kd0)
+    runtime_setpoint = float(tsp_array[0]) if len(tsp_array) else SP_DEFAULT_NIGHT
+    cost_weights = normalize_cost_weights(DEFAULT_COST_WEIGHTS)
 
     sup_every = max(1, int(round(supervision_interval_min * 60 / dt_seconds)))
     window_steps = max(1, int(round(window_min * 60 / dt_seconds)))
@@ -765,7 +980,7 @@ def simulate_proactive_pid_supervision(
             telemetry = summarize_window(
                 time_index=time_index,
                 ti_hist=ti_hist,
-                tsp_hist=tsp_array,
+                tsp_hist=tsp_runtime_hist,
                 phea_hist=phea_hist,
                 err_hist=err_hist,
                 start_idx=start_idx,
@@ -780,31 +995,38 @@ def simulate_proactive_pid_supervision(
             )
 
             if supervisor_mode == "rules":
-                kp_prop, ki_prop, kd_prop, proactive_action, proactive_reason = proactive_pid_supervisor(
+                proposal = proactive_full_action_supervisor(
                     telemetry=telemetry,
                     forecast=forecast,
                     kp=kp,
                     ki=ki,
                     kd=kd,
+                    setpoint_c=runtime_setpoint,
+                    cost_weights=cost_weights,
                 )
 
-                decision_mode = "proactive"
-                action = proactive_action
-                reason = proactive_reason
                 decision_source = "rules"
 
-                if proactive_action == "hold":
+                if proposal.action == "hold":
                     kp_prop, ki_prop, kd_prop, reactive_action = reactive_pid_supervisor(
                         telemetry=telemetry,
                         kp=kp,
                         ki=ki,
                         kd=kd,
                     )
-                    decision_mode = "reactive" if reactive_action != "hold" else "hold"
-                    action = reactive_action
-                    reason = "no proactive trigger; fallback to reactive rule"
+                    proposal = SupervisorProposal(
+                        float(kp_prop),
+                        float(ki_prop),
+                        float(kd_prop),
+                        float(runtime_setpoint),
+                        dict(cost_weights),
+                        "reactive" if reactive_action != "hold" else "hold",
+                        "set_pid" if reactive_action != "hold" else "hold",
+                        decision_source,
+                        "no proactive trigger; fallback to reactive rule",
+                    )
             else:
-                kp_prop, ki_prop, kd_prop, decision_mode, action, decision_source, reason = _agent_proactive_pid_supervisor(
+                proposal = _agent_proactive_pid_supervisor(
                     time_index=time_index,
                     idx=k,
                     ta_array=ta_array,
@@ -813,6 +1035,8 @@ def simulate_proactive_pid_supervision(
                     kp=kp,
                     ki=ki,
                     kd=kd,
+                    setpoint_c=runtime_setpoint,
+                    cost_weights=cost_weights,
                     room=room,
                     city=city,
                     user_id=user_id,
@@ -824,7 +1048,7 @@ def simulate_proactive_pid_supervision(
 
             supervision_records.append({
                 "time": str(time_index[k]),
-                "decision_mode": decision_mode,
+                "decision_mode": proposal.decision_mode,
                 "window_start": telemetry["window_start"],
                 "window_end": telemetry["window_end"],
                 "current_ti_C": telemetry["current_ti"],
@@ -847,19 +1071,41 @@ def simulate_proactive_pid_supervision(
                 "kp_before": kp,
                 "ki_before": ki,
                 "kd_before": kd,
-                "action": action,
-                "decision_source": decision_source,
-                "reason": reason,
-                "rationale": reason,
-                "kp_after": kp_prop,
-                "ki_after": ki_prop,
-                "kd_after": kd_prop,
+                "setpoint_before_C": runtime_setpoint,
+                "comfort_weight_before": cost_weights["comfort"],
+                "energy_weight_before": cost_weights["energy"],
+                "response_weight_before": cost_weights["response"],
+                "weighted_cost_before": _weighted_cost_proxy(telemetry, cost_weights),
+                "action": proposal.action,
+                "decision_source": proposal.decision_source,
+                "reason": proposal.rationale,
+                "rationale": proposal.rationale,
+                "kp_after": proposal.kp,
+                "ki_after": proposal.ki,
+                "kd_after": proposal.kd,
+                "setpoint_after_C": proposal.setpoint_c,
+                "comfort_weight_after": proposal.cost_weights["comfort"],
+                "energy_weight_after": proposal.cost_weights["energy"],
+                "response_weight_after": proposal.cost_weights["response"],
+                "weighted_cost_after": _weighted_cost_proxy(telemetry, proposal.cost_weights),
             })
 
-            kp, ki, kd = kp_prop, ki_prop, kd_prop
+            kp, ki, kd = proposal.kp, proposal.ki, proposal.kd
+            runtime_setpoint = proposal.setpoint_c
+            cost_weights = proposal.cost_weights
 
         ti_k = bldg.get_state()
-        tsp_k = float(tsp_array[k])
+        if k == 0 or (k > 0 and not np.isclose(tsp_array[k], tsp_array[k - 1])):
+            # Scheduled user instructions remain the baseline; online C3 actions
+            # can then nudge the active setpoint around that current segment.
+            runtime_setpoint = clip_with_step(
+                runtime_setpoint,
+                float(tsp_array[k]),
+                SETPOINT_MIN_C,
+                SETPOINT_MAX_C,
+                MAX_SETPOINT_STEP_C,
+            )
+        tsp_k = float(runtime_setpoint)
 
         p_k, integral, error_now, derivative_now = pid_controller(
             ti=ti_k,
@@ -882,6 +1128,10 @@ def simulate_proactive_pid_supervision(
         kp_hist[k] = kp
         ki_hist[k] = ki
         kd_hist[k] = kd
+        tsp_runtime_hist[k] = tsp_k
+        comfort_weight_hist[k] = cost_weights["comfort"]
+        energy_weight_hist[k] = cost_weights["energy"]
+        response_weight_hist[k] = cost_weights["response"]
 
         if k < n - 1:
             bldg.next_step(
@@ -901,6 +1151,10 @@ def simulate_proactive_pid_supervision(
         "Kp": kp_hist,
         "Ki": ki_hist,
         "Kd": kd_hist,
+        "Tsp_runtime": tsp_runtime_hist,
+        "comfort_weight": comfort_weight_hist,
+        "energy_weight": energy_weight_hist,
+        "response_weight": response_weight_hist,
     }
     sup_df = pd.DataFrame(supervision_records)
     return sim, sup_df
@@ -1030,11 +1284,29 @@ def compute_evaluation_metrics(
     ti: np.ndarray,
     tsp: np.ndarray,
     phea_w: np.ndarray,
+    comfort_weight: np.ndarray | None = None,
+    energy_weight: np.ndarray | None = None,
+    response_weight: np.ndarray | None = None,
     dt_seconds: float = DT_SECONDS,
 ) -> dict[str, float | int | None]:
     ti = np.asarray(ti, dtype=float)
     tsp = np.asarray(tsp, dtype=float)
     phea_w = np.asarray(phea_w, dtype=float)
+    comfort_weight = (
+        np.full(len(ti), DEFAULT_COST_WEIGHTS["comfort"], dtype=float)
+        if comfort_weight is None
+        else np.asarray(comfort_weight, dtype=float)
+    )
+    energy_weight = (
+        np.full(len(ti), DEFAULT_COST_WEIGHTS["energy"], dtype=float)
+        if energy_weight is None
+        else np.asarray(energy_weight, dtype=float)
+    )
+    response_weight = (
+        np.full(len(ti), DEFAULT_COST_WEIGHTS["response"], dtype=float)
+        if response_weight is None
+        else np.asarray(response_weight, dtype=float)
+    )
 
     start_idx = _ignore_start_index(IGNORE_FIRST_HOUR_FOR_COMFORT, dt_seconds)
     ti_c = ti[start_idx:]
@@ -1052,6 +1324,16 @@ def compute_evaluation_metrics(
 
     tariff = build_tariff_schedule(time_index)
     ec_usd = float(np.sum((phea_w / 1000.0) * dt_hours * tariff))
+    comfort_cost = np.square(ti - tsp)
+    energy_cost = (phea_w / max(1.0, PMAX)) ** 2
+    response_cost = np.square(np.diff(phea_w, prepend=phea_w[0]) / max(1.0, PMAX))
+    weighted_objective = float(
+        np.mean(
+            comfort_weight * comfort_cost
+            + energy_weight * energy_cost
+            + response_weight * response_cost
+        )
+    )
 
     seg_start, seg_end = _first_constant_setpoint_segment(tsp)
     ti_seg = ti[seg_start:seg_end]
@@ -1077,6 +1359,7 @@ def compute_evaluation_metrics(
         "ST_s": st_seconds,
         "OC_count": oc_count,
         "MO_C": mo_c,
+        "weighted_objective_J": weighted_objective,
     }
 
 
@@ -1180,18 +1463,25 @@ def main() -> None:
     metrics_day2 = compute_evaluation_metrics(
         time_index=time_day2,
         ti=sim_day2["Ti"],
-        tsp=tsp_day2,
+        tsp=sim_day2["Tsp_runtime"],
         phea_w=sim_day2["Phea"],
+        comfort_weight=sim_day2["comfort_weight"],
+        energy_weight=sim_day2["energy_weight"],
+        response_weight=sim_day2["response_weight"],
     )
 
     tariff_day2 = build_tariff_schedule(time_day2)
     day2_out = pd.DataFrame({
         "time": time_day2,
         "Ta_C": ta_day2,
-        "Tsp_C": tsp_day2,
+        "Tsp_base_C": tsp_day2,
+        "Tsp_C": sim_day2["Tsp_runtime"],
         "Ti_C": sim_day2["Ti"],
         "Phea_W": sim_day2["Phea"],
         "tariff_USD_per_kWh": tariff_day2,
+        "comfort_weight": sim_day2["comfort_weight"],
+        "energy_weight": sim_day2["energy_weight"],
+        "response_weight": sim_day2["response_weight"],
         "error_C": sim_day2["err"],
         "integral_term": sim_day2["int"],
         "derivative_term": sim_day2["der"],
@@ -1207,7 +1497,7 @@ def main() -> None:
     save_temperature_plot(
         OUTPUT_DIR / "c3_day2_temperature_plot.png",
         ta_day2,
-        tsp_day2,
+        sim_day2["Tsp_runtime"],
         sim_day2["Ti"],
         "C3 proactive PID supervision temperature response on Day 2",
     )
@@ -1223,10 +1513,10 @@ def main() -> None:
     )
 
     summary = {
-        "method": "C3 proactive PID supervision with fixed setpoint schedule",
+        "method": "C3 full-action proactive PID supervision",
         "condition_definition": (
-            "setpoint is fixed by the shared C1/C2 schedule; only PID parameters are adjusted "
-            "every 5 minutes using forecasted outdoor temperature and user habits"
+            "PID gains, online setpoint, and online cost weights are supervised every 5 minutes "
+            "using telemetry, forecasted outdoor temperature, tariff context, and user habits"
         ),
         "initial_pid_source": pid_source,
         "initial_pid_used": {"KP": kp0, "KI": ki0, "KD": kd0},
@@ -1241,9 +1531,20 @@ def main() -> None:
         "window_min": WINDOW_MIN,
         "forecast_horizon_min": FORECAST_HORIZON_MIN,
         "significant_forecast_delta_C": SIGNIFICANT_FORECAST_DELTA_C,
-        "weather_source": "generated outdoor temperature data",
-        "setpoint_adjustment_online": False,
-        "cost_weight_adjustment_online": False,
+        "weather_source": "generated outdoor temperature data exposed through get_weather_forecast override",
+        "tariff_source": "synthetic TOU tariff exposed through get_tariff_schedule override",
+        "setpoint_adjustment_online": True,
+        "cost_weight_adjustment_online": True,
+        "setpoint_bounds_C": {
+            "min": SETPOINT_MIN_C,
+            "max": SETPOINT_MAX_C,
+            "max_step_per_supervision": MAX_SETPOINT_STEP_C,
+        },
+        "cost_weight_bounds": {
+            "min_component_before_normalization": COST_WEIGHT_MIN,
+            "max_component_before_normalization": COST_WEIGHT_MAX,
+            "default": DEFAULT_COST_WEIGHTS,
+        },
         "pid_bounds": {
             "KP_MIN": KP_MIN, "KP_MAX": KP_MAX,
             "KI_MIN": KI_MIN, "KI_MAX": KI_MAX,

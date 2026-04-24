@@ -1,0 +1,50 @@
+{
+  "condition": "C3",
+  "scenario_id": "S4",
+  "scenario_name": "Occupancy Adaptation",
+  "scenario_command": "Guests coming at 6 PM, make it comfortable.",
+  "seed": 42,
+  "room": "bedroom",
+  "initial_pid": {
+    "KP": 1.0,
+    "KI": 2.0,
+    "KD": 0.0
+  },
+  "requested_supervisor_mode": "agent_auto",
+  "effective_supervisor_mode": "agent_auto",
+  "llm_model": "qwen2.5:7b",
+  "control_action_space": [
+    "set_pid",
+    "set_setpoint",
+    "set_cost_weights"
+  ],
+  "setpoint_adjustment_online": true,
+  "cost_weight_adjustment_online": true,
+  "supervision_interval_min": 10,
+  "forced_rule_steps": [],
+  "num_supervision_updates": 35,
+  "decision_source_counts": {
+    "agent": 35
+  },
+  "decision_mode_counts": {
+    "proactive": 35
+  },
+  "metrics": {
+    "MAD_C": 0.28095375618041785,
+    "CVR_fraction": 0.0,
+    "CE_kWh": 0.03827096372962913,
+    "EC_USD": 0.006935964891437845,
+    "RT_s": 2220.0,
+    "ST_s": 6300.0,
+    "OC_count": 0,
+    "MO_C": 0.30476470462623695,
+    "weighted_objective_J": 1.7509330866860917
+  },
+  "scenario_notes": {
+    "scenario_name": "Occupancy Adaptation",
+    "command": "Guests coming at 6 PM, make it comfortable.",
+    "duration_steps": 360,
+    "start_minute": 900,
+    "working_setpoint_scale": "demo_heating_scale_38_to_41C"
+  }
+}
