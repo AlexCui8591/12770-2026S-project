@@ -1,0 +1,10 @@
+node_modules/
+demo_live/frontend/node_modules/
+__pycache__/
+*.pyc
+dist/
+build/
+demo_live/frontend/dist/
+demo_live/frontend/build/
+.env
+.env.local
